@@ -7,9 +7,9 @@ from event import Event, EventQueue
 from peer import Peer
 from network import create_network
 
+import random
 event_queue = EventQueue()
 current_time = 0
-
 def main():
     parse_arguments()
     peers = create_peers()
@@ -34,12 +34,26 @@ def create_peers():
         is_low_cpu=random.random() < SIM_PARAMS["z1_low_cpu_percent"] / 100
     ) for i in range(SIM_PARAMS["n_peers"])]
 
+# def schedule_initial_events(peers):
+#     for peer in peers:
+#         schedule_next_transaction(peer)
 def schedule_initial_events(peers):
     for peer in peers:
+        # Schedule first transaction generation
+
         schedule_next_transaction(peer)
+        
+        # Schedule initial mining attempt
+        event = Event(
+            timestamp=0,
+            event_type="start_mining",
+            callback=peer.mine_block
+        )
+        event_queue.schedule(event)
 
 def schedule_next_transaction(peer):
     interval = random.expovariate(1 / SIM_PARAMS["mean_tx_interval"])
+    # print(f"[DEBUG] Peer {peer.id} will generate a transaction in {interval:.2f}s")
     event = Event(
         timestamp=current_time + interval,
         event_type="generate_tx",
@@ -49,19 +63,25 @@ def schedule_next_transaction(peer):
     event_queue.schedule(event)
 
 def generate_transaction(peer):
+    
     receiver = random.choice([p for p in peer.neighbors])
     amount = random.randint(1, 100)
     tx = peer.generate_transaction(receiver.id, amount)
+    # if(tx):
+        # print(f"[DEBUG] Peer {peer.id} generated transaction {tx.id} to Peer {receiver.id}") # Done
     if tx:
         peer.receive_transaction(tx)
     schedule_next_transaction(peer)
 
 def run_simulation():
     global current_time
+    print(f"Running simulation for {SIM_PARAMS['simulation_time']} seconds...")
     while event_queue.queue and current_time < SIM_PARAMS["simulation_time"]:
+        # print(f"\n[DEBUG] Current time: {current_time:.2f}s")
         event = event_queue.next_event()
         current_time = event.timestamp
         event.callback(event.data)
+
 
 def save_results(peers):
     os.makedirs("blockchains", exist_ok=True)
