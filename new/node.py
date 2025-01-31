@@ -41,7 +41,7 @@ class Node:
         self.blocks_unvalidated: Dict[str, Tuple[int, Block]] = dict()  # Hash -> (Sender, Block)
         self.blockchain_leafs: List[str] = [GENESIS_BLOCK.curr_block_hash]  # NOTE: this is always sorted
 
-        self.cache_balance: Dict[str, Dict] = defaultdict(defaultdict(float))
+        self.cache_balance: Dict[str, Dict] = defaultdict(lambda: defaultdict(float))
         self.node_hash_power_percent = hash_power_percent
         sp: SimulatorParameters = simulator.simulator_parameters
 

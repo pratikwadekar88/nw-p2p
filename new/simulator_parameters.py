@@ -1,5 +1,8 @@
 import json
 import os
+import logging
+
+g_logger = logging.getLogger(__name__)
 
 class SimulatorParameters:
     """Parameters from the configuration file are stored in this class"""
