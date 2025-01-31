@@ -481,7 +481,7 @@ def Main(args: Dict):
     # Begin the infinite random transaction creation process
     # While handling an old transaction, a new transaction is created
     for node in nodes_list:
-        node.transaction_create()
+        node.transaction_create(nodes_list)
         node.mining_start()
 
 

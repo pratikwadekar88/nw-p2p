@@ -218,14 +218,14 @@ class Node:
             tail_block = self.blocks_all[tail_block].prev_block_hash
         return balance
 
-    def transaction_create(self):
+    def transaction_create(self, nodes_list: 'Nodes'):
         """
         Point 2 of the PDF: Generate Transaction and add it to the event queue
           - Randomly Select a node for receiver
           - Coin Amount : generate randomly based on current balance
         """
         txn_receiver: int = random.choice(
-            [node.node_id for node in self.simulator.nodes_list if node.node_id != self.node_id]
+            [node.node_id for node in nodes_list if node.node_id != self.node_id]
         )
         txn_amount: float = round(random.uniform(0, self.get_balance(self.node_id, self.blockchain_leafs[-1])), 2)
         txn_obj: Transaction = Transaction(
