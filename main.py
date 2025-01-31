@@ -2,6 +2,7 @@
 
 import time
 from simulation import Simulation
+from config import NUM_PEERS
 
 if __name__ == '__main__':
     start_time = time.time()
@@ -19,6 +20,7 @@ if __name__ == '__main__':
     # Visualize the network topology
     sim.visualize_network_topology()
 
-    # Visualize the blockchain of a specific peer
-    peer_id = '0'  # Ensure peer_id is a string
-    sim.visualize_blockchain(peer_id)
+    # Visualize the blockchain of all peers
+    for peer_id in range(NUM_PEERS):
+        peer_id = str(peer_id)
+        sim.visualize_blockchain(peer_id)

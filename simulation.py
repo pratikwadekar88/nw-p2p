@@ -11,7 +11,8 @@ import networkx as nx
 import matplotlib
 matplotlib.use('TkAgg')  # or 'Qt5Agg' or 'Agg'
 import matplotlib.pyplot as plt
-import numpy as np  # For random jitter
+import numpy as np
+import shutil
 
 class Simulation:
     def __init__(self):
@@ -119,10 +120,13 @@ class Simulation:
                 last_log_time = self.current_time
 
     def collect_results(self):
+        parent_dir = "simOut"
+        # Check if the directory exists and remove it
+        if os.path.exists(parent_dir):
+            shutil.rmtree(parent_dir)
+        output_dir = "simOut/blockchainTxns"
         # Create the blockchainTxn directory if it doesn't exist
-        output_dir = "blockchainTxns"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
 
         # Collect and write blockchain trees to files
         for peer_id, peer in self.peers.items():
@@ -163,7 +167,18 @@ class Simulation:
 
         ax.set_title(f'Blockchain Tree for Peer {peer_id}')
         ax.axis('off')
-        plt.show()
+        
+        # Specify the directory where you want to save the plot
+        save_directory = 'simOut/plots/blockChainTrees'
+        # Ensure the directory exists
+        os.makedirs(save_directory, exist_ok=True)
+
+        # Construct the full path
+        save_path = os.path.join(save_directory, f'Peer {peer_id}.png')
+
+        # Save the plot to the specified directory
+        plt.savefig(save_path)
+        print(f'Plot saved to {save_path}')
 
     # Visualization of the network topology
     def visualize_network_topology(self):
@@ -198,7 +213,18 @@ class Simulation:
         nx.draw(G, pos, with_labels=True, node_color=node_colors, node_size=500, font_size=8)
         plt.title('Network Topology of Peers')
         plt.axis('off')
-        plt.show()
+
+        # Specify the directory where you want to save the plot
+        save_directory = 'simOut/plots'
+        # Ensure the directory exists
+        os.makedirs(save_directory, exist_ok=True)
+
+        # Construct the full path
+        save_path = os.path.join(save_directory, 'Peer Network.png')
+
+        # Save the plot to the specified directory
+        plt.savefig(save_path)
+        print(f'Plot saved to {save_path}')
 
     # Method to compare peer blockchains
     def compare_peer_blockchains(self):
