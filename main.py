@@ -4,20 +4,21 @@ import time
 from simulation import Simulation
 
 if __name__ == '__main__':
+    start_time = time.time()
+
     sim = Simulation()
     sim.setup()
     sim.run()
     sim.collect_results()
-    sim.compare_peer_blockchains()  # Compare peer blockchains
+    sim.compare_peer_blockchains()
+
     end_time = time.time()
-    elapsed_time = end_time - sim.current_time
+    elapsed_time = end_time - start_time
     print(f"Simulation completed in {elapsed_time:.2f} seconds.")
 
     # Visualize the network topology
     sim.visualize_network_topology()
 
     # Visualize the blockchain of a specific peer
-    peer_id = '0'  # Replace with the peer ID you want to visualize
-    sim.visualize_blockchain(1,peer_id)
-    sim.visualize_blockchain(2,'1')
-    sim.visualize_blockchain(2,'9')
+    peer_id = '0'  # Ensure peer_id is a string
+    sim.visualize_blockchain(peer_id)

@@ -1,11 +1,11 @@
 # config.py
 
 # Simulation parameters
-NUM_PEERS = 30  # Adjusted number of peers for testing
-PERCENT_SLOW = 0.7  # Percentage of slow nodes
-PERCENT_LOW_CPU = 0.6  # Percentage of low CPU nodes
+NUM_PEERS = 10  # Adjusted number of peers for testing
+PERCENT_SLOW = 0.5  # Percentage of slow nodes
+PERCENT_LOW_CPU = 0.5  # Percentage of low CPU nodes
 MEAN_TX_INTERVAL = 5  # Mean time between transactions (increase transaction rate)
-MEAN_BLOCK_INTERVAL = 30 # Decreased block interval for higher mining rate
+MEAN_BLOCK_INTERVAL = 50 # Decreased block interval for higher mining rate
 SIMULATION_TIME = 500  # Total simulation time in seconds (adjusted for testing)
 
 # Network parameters
@@ -13,7 +13,7 @@ MIN_CONNECTIONS = 3
 MAX_CONNECTIONS = 6
 
 MIN_PROP_DELAY = 5.0  # Increased minimum propagation delay
-MAX_PROP_DELAY = 10.0  # Increased maximum propagation delay
+MAX_PROP_DELAY = 20.0  # Increased maximum propagation delay
 
 FAST_LINK_SPEED = 100e6  # 100 Mbps
 SLOW_LINK_SPEED = 5e6    # 5 Mbps

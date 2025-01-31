@@ -16,21 +16,33 @@ class Simulation:
         self.peers = {}  # peer_id -> Peer
         self.event_queue = []
         self.current_time = 0
+        self.network_snapshots = []  # For capturing network snapshots (if needed)
 
     def setup(self):
         # Initialize peers
         num_slow = int(PERCENT_SLOW * NUM_PEERS)
         num_low_cpu = int(PERCENT_LOW_CPU * NUM_PEERS)
         peer_ids = [str(i) for i in range(NUM_PEERS)]
-        random.shuffle(peer_ids)
-        slow_peers = set(peer_ids[:num_slow])
-        low_cpu_peers = set(peer_ids[num_slow:num_slow + num_low_cpu])
+
+        # Assign slow and low CPU peers independently
+        slow_peers = set(random.sample(peer_ids, num_slow))
+        low_cpu_peers = set(random.sample(peer_ids, num_low_cpu))
 
         for pid in peer_ids:
             is_slow = pid in slow_peers
             is_low_cpu = pid in low_cpu_peers
             peer = Peer(pid, is_slow, is_low_cpu)
             self.peers[pid] = peer
+
+        # Output counts for verification
+        num_red = sum(1 for peer in self.peers.values() if peer.is_slow and peer.is_low_cpu)
+        num_orange = sum(1 for peer in self.peers.values() if peer.is_slow and not peer.is_low_cpu)
+        num_green = sum(1 for peer in self.peers.values() if not peer.is_slow and peer.is_low_cpu)
+        num_blue = sum(1 for peer in self.peers.values() if not peer.is_slow and not peer.is_low_cpu)
+        print(f"Red nodes (slow & low CPU): {num_red}")
+        print(f"Orange nodes (slow only): {num_orange}")
+        print(f"Green nodes (low CPU only): {num_green}")
+        print(f"Blue nodes (fast & high CPU): {num_blue}")
 
         # Assign hash powers
         total_peers = len(self.peers)
@@ -125,7 +137,7 @@ class Simulation:
                     f.write('\n')
 
     # Visualization of the blockchain tree for a specific peer
-    def visualize_blockchain(self, fig, peer_id):
+    def visualize_blockchain(self, peer_id, ax=None):
         peer = self.peers[peer_id]
         G = nx.DiGraph()
 
@@ -135,17 +147,20 @@ class Simulation:
             if block.prev_block_id:
                 G.add_edge(block.prev_block_id[:6], block.block_id[:6])
 
-        # Draw the graph
-        plt.figure(fig,figsize=(12, 8))
+        # Use provided axes or create new
+        if ax is None:
+            plt.figure(figsize=(12, 8))
+            ax = plt.gca()
+
         pos = nx.spring_layout(G, k=0.5, iterations=50)
-        nx.draw(G, pos, with_labels=True, node_size=500, node_color='lightblue', arrowsize=20)
+        nx.draw(G, pos, with_labels=True, node_size=500, node_color='lightblue', arrowsize=20, ax=ax)
 
         # Add labels
         miner_labels = {node: f"Miner: {data['miner']}" for node, data in G.nodes(data=True)}
-        nx.draw_networkx_labels(G, pos, labels=miner_labels, font_size=8, verticalalignment='bottom', font_color='red')
+        nx.draw_networkx_labels(G, pos, labels=miner_labels, font_size=8, verticalalignment='bottom', font_color='red', ax=ax)
 
-        plt.title(f'Blockchain Tree for Peer {peer_id}')
-        plt.axis('off')
+        ax.set_title(f'Blockchain Tree for Peer {peer_id}')
+        ax.axis('off')
         plt.show()
 
     # Visualization of the network topology
@@ -164,17 +179,19 @@ class Simulation:
         # Node colors based on attributes
         node_colors = []
         for node in G.nodes(data=True):
-            if node[1]['is_slow'] and node[1]['is_low_cpu']:
-                node_colors.append('red')  # Slow and low CPU
-            elif node[1]['is_slow']:
-                node_colors.append('orange')  # Slow
-            elif node[1]['is_low_cpu']:
-                node_colors.append('green')  # Low CPU
+            is_slow = node[1]['is_slow']
+            is_low_cpu = node[1]['is_low_cpu']
+            if is_slow and is_low_cpu:
+                node_colors.append('red')      # Slow and low CPU
+            elif is_slow and not is_low_cpu:
+                node_colors.append('orange')   # Slow only
+            elif not is_slow and is_low_cpu:
+                node_colors.append('green')    # Low CPU only
             else:
-                node_colors.append('blue')  # Fast and high CPU
+                node_colors.append('blue')     # Fast and high CPU
 
         # Draw the graph
-        plt.figure(0,figsize=(12, 8))
+        plt.figure(figsize=(12, 8))
         pos = nx.spring_layout(G, k=0.3)
         nx.draw(G, pos, with_labels=True, node_color=node_colors, node_size=500, font_size=8)
         plt.title('Network Topology of Peers')
