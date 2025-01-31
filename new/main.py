@@ -23,6 +23,8 @@ gi.require_version("Gtk", "3.0")
 
 from gi.repository import Gtk, GLib
 
+progress_bar_init_success = False
+
 def plot_graph_build(blocks_iter: Iterable[Block], blocks_leafs: List[str] = None) -> Digraph:
     # REFER: http://magjac.com/graphviz-visual-editor/
     #       - Playground for testing and immediate results
@@ -305,43 +307,69 @@ def debug_stats(mySimulator: Simulator):
 # REFER: https://zetcode.com/python/gtk/
 class ProgressBarWindow(Gtk.Window):
     def __init__(self):
+        #Gtk.Window.__init__(self, title='Simulation Progress')
+        #global progress_bar_init_success
+        #Gtk.Window.__init__(self, title='Simulation Progress')
+        #self.set_border_width(10)
+
+        #vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        #self.add(vbox)
+
+        #self.label = Gtk.Label()
+        #self.label.set_text('Initializing...')
+        #self.label.set_width_chars(50)
+        #vbox.pack_start(self.label, True, True, 0)
+
+        ## Create a ProgressBar
+        #self.progressbar = Gtk.ProgressBar()
+        #self.progressbar.set_size_request(width=150, height=-1)
+        ## self.progressbar.set_text('Initializing...')
+        ## self.progressbar.set_show_text(True)
+        #vbox.pack_start(self.progressbar, True, True, 0)
+
+        ## Create CheckButton with labels "Show text",
+        ## "Activity mode", "Right to Left" respectively
+        #button = Gtk.CheckButton(label="Activity mode")
+        #button.connect("toggled", self.on_activity_mode_toggled)
+        #vbox.pack_start(button, True, True, 0)
+
+        ## REFER: https://docs.gtk.org/glib/func.timeout_add.html
+        #self.timeout_id = GLib.timeout_add(500, self.on_timeout, None)
+        #self.activity_mode = False
+        #self.progress_percent: float = 0.0
+        #self.progress_label: str = 'Initializing...'
+
+        #progress_bar_init_success = True
+        #
+        #self.progress_label = None  # Initialize progress_label
+        #self.progressbar = None
+        #self.label = None
         Gtk.Window.__init__(self, title='Simulation Progress')
         global progress_bar_init_success
-        Gtk.Window.__init__(self, title='Simulation Progress')
         self.set_border_width(10)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.add(vbox)
 
-        self.label = Gtk.Label()
-        self.label.set_text('Initializing...')
-        self.label.set_width_chars(50)
+        self.label = Gtk.Label(label="Initializing...")
         vbox.pack_start(self.label, True, True, 0)
 
-        # Create a ProgressBar
+        # Initialize progressbar BEFORE setting timeout
         self.progressbar = Gtk.ProgressBar()
         self.progressbar.set_size_request(width=150, height=-1)
-        # self.progressbar.set_text('Initializing...')
-        # self.progressbar.set_show_text(True)
         vbox.pack_start(self.progressbar, True, True, 0)
 
-        # Create CheckButton with labels "Show text",
-        # "Activity mode", "Right to Left" respectively
         button = Gtk.CheckButton(label="Activity mode")
         button.connect("toggled", self.on_activity_mode_toggled)
         vbox.pack_start(button, True, True, 0)
 
-        # REFER: https://docs.gtk.org/glib/func.timeout_add.html
-        self.timeout_id = GLib.timeout_add(500, self.on_timeout, None)
         self.activity_mode = False
-        self.progress_percent: float = 0.0
-        self.progress_label: str = 'Initializing...'
+        self.progress_percent = 0.0
+        self.progress_label = "Initializing..."
 
+        # Ensure progressbar is initialized before timeout function
+        self.timeout_id = GLib.timeout_add(500, self.on_timeout, None)
         progress_bar_init_success = True
-        
-        self.progress_label = None  # Initialize progress_label
-        self.progressbar = None
-        self.label = None
 
     def update_progress(self, progress_percent, progress_label):
         GLib.idle_add(self._update_progress_idle, progress_percent, progress_label)
@@ -423,8 +451,9 @@ def Main(args: Dict):
     # GLib.idle_add(create_and_show_window)  # Create window on main thread
     # win = Gtk.main()  # Start GTK main loop (this will block)
     win = ProgressBarWindow()
-    thread = Thread(target=ProgressBarWindow.start_progressbar, args=(win,), daemon=True)
-    thread.start()
+    #thread = Thread(target=ProgressBarWindow.start_progressbar, args=(win,), daemon=True)
+    #thread.start()
+    GLib.idle_add(lambda: ProgressBarWindow.start_progressbar(win))
 
     # Wait for progress bar to setup before executing the upcoming statements
     while (not progress_bar_init_success):

@@ -6,6 +6,9 @@ from event_queue import EventQueue
 from simulator_parameters import SimulatorParameters
 from transaction import Transaction
 
+import logging
+
+g_logger = logging.getLogger(__name__)
 
 class Simulator:
     def __init__(self, sp: SimulatorParameters):
