@@ -8,6 +8,8 @@ from event import EventType, Event
 from network import Network
 from config import *
 import networkx as nx
+import matplotlib
+matplotlib.use('TkAgg')  # or 'Qt5Agg' or 'Agg'
 import matplotlib.pyplot as plt
 import numpy as np  # For random jitter
 
