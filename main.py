@@ -28,28 +28,29 @@ def parse_arguments():
     update_config(args)
 
 def create_peers():
-    return [Peer(
-        peer_id=f"peer_{i}",
-        is_slow=random.random() < SIM_PARAMS["z0_slow_percent"] / 100,
-        is_low_cpu=random.random() < SIM_PARAMS["z1_low_cpu_percent"] / 100
-    ) for i in range(SIM_PARAMS["n_peers"])]
+    peers = []
+    total_hash_power = sum(10 if not p.is_low_cpu else 1 for p in peers)
+    for i in range(SIM_PARAMS["n_peers"]):
+        is_slow = random.random() < SIM_PARAMS["z0_slow_percent"] / 100
+        is_low_cpu = random.random() < SIM_PARAMS["z1_low_cpu_percent"] / 100
+        hash_power = 10 / total_hash_power if not is_low_cpu else 1 / total_hash_power
+        peers.append(Peer(f"peer_{i}", is_slow, is_low_cpu, hash_power))
+    return peers
 
 # def schedule_initial_events(peers):
 #     for peer in peers:
 #         schedule_next_transaction(peer)
 def schedule_initial_events(peers):
     for peer in peers:
-        # Schedule first transaction generation
-
-        schedule_next_transaction(peer)
-        
-        # Schedule initial mining attempt
+        # Stagger initial mining events
+        mining_delay = random.uniform(0, 5)  # Add small random delay
         event = Event(
-            timestamp=0,
+            timestamp=mining_delay,
             event_type="start_mining",
             callback=peer.mine_block
         )
         event_queue.schedule(event)
+        schedule_next_transaction(peer)
 
 def schedule_next_transaction(peer):
     interval = random.expovariate(1 / SIM_PARAMS["mean_tx_interval"])
