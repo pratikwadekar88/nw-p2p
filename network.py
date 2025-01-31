@@ -1,14 +1,16 @@
+# network.py
 import networkx as nx
-
+import random
 def create_network(peers):
+    """Create connected graph with 3-6 neighbors per peer"""
     while True:
-        G = nx.random_regular_graph(3, len(peers))
+        # Randomly choose degree between 3-6
+        degree = random.randint(3, 6)
+        G = nx.random_regular_graph(degree, len(peers))
         if nx.is_connected(G):
             break
             
     for i, j in G.edges():
         peers[i].add_neighbor(peers[j])
         peers[j].add_neighbor(peers[i])
-        print(f"[DEBUG] Connected Peer {peers[i].id} to Peer {peers[j].id}")
-    
     return G

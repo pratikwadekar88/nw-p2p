@@ -18,13 +18,13 @@ class EventQueue:
         self.queue = []  # Min-heap for events
     
     def schedule(self, event):
-        """Add an event to the queue."""
         heapq.heappush(self.queue, (event.timestamp, event))
-        # print(f"[DEBUG] Scheduled event {event.event_type} at time {event.timestamp}") 
+        
     def next_event(self):
-        """Get the next event from the queue."""
-        # print(f"[DEBUG] Executing event {event.event_type} at time {event.timestamp}")
-        return heapq.heappop(self.queue)[1] if self.queue else None
+        if not self.queue:
+            return None
+        _, event = heapq.heappop(self.queue)
+        return event
     
     def peek_time(self):
         """Get the timestamp of the next event."""
