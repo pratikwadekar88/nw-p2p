@@ -178,6 +178,7 @@ class Simulation:
 
         # Save the plot to the specified directory
         plt.savefig(save_path)
+        plt.close()
         print(f'Plot saved to {save_path}')
 
     # Visualization of the network topology
@@ -224,6 +225,7 @@ class Simulation:
 
         # Save the plot to the specified directory
         plt.savefig(save_path)
+        plt.close()
         print(f'Plot saved to {save_path}')
 
     # Method to compare peer blockchains

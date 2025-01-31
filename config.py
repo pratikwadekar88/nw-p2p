@@ -1,7 +1,7 @@
 # config.py
 
 # Simulation parameters
-NUM_PEERS = 10  # Adjusted number of peers for testing
+NUM_PEERS = 20  # Adjusted number of peers for testing
 PERCENT_SLOW = 0.5  # Percentage of slow nodes
 PERCENT_LOW_CPU = 0.5  # Percentage of low CPU nodes
 MEAN_TX_INTERVAL = 5  # Mean time between transactions (increase transaction rate)
