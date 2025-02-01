@@ -149,7 +149,7 @@ class Peer:
             for txn_id, txn in list(self.pending_transactions.items()):
                 if txn_id not in included_txns:
                     txn_size = txn.size
-                    if block_size + txn_size <= max_block_size:
+                    if block_size + txn_size <= max_block_size - TRANSACTION_SIZE:
                         transactions.append(txn)
                         block_size += txn_size
                         # Remove from pending transactions
@@ -169,7 +169,6 @@ class Peer:
                 transactions=transactions,
                 timestamp=current_time
             )
-            block.size = block_size  # Set block size
 
             # Add block to blockchain
             self.blockchain[block.block_id] = block
@@ -287,9 +286,10 @@ class Peer:
         chain = []
         current_block = block
         while current_block:
-            chain.insert(0, current_block)
+            chain.append(current_block)
             prev_block_id = current_block.prev_block_id
             current_block = self.blockchain.get(prev_block_id, None)
+        chain.reverse()
         return chain
 
     # Construct chain up to a block ID (used in validation)
