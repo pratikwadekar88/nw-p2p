@@ -10,7 +10,7 @@ if __name__ == '__main__':
     sim = Simulation()
     sim.setup()
     sim.run()
-    sim.collect_results()
+    # sim.collect_results()
     sim.compare_peer_blockchains()
 
     end_time = time.time()

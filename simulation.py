@@ -11,6 +11,8 @@ import networkx as nx
 import matplotlib
 matplotlib.use('TkAgg')  # or 'Qt5Agg' or 'Agg'
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import pandas as pd
 import numpy as np
 import shutil
 
@@ -182,12 +184,7 @@ class Simulation:
         # print(f'Plot saved to {save_path}')
 
     def visualize_blockchain(self, peer_id):
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        import os
-    
         peer = self.peers[peer_id]
-    
         if not peer.blockchain:
             print(f"Peer {peer_id} has no blocks in their blockchain.")
             return
@@ -272,7 +269,7 @@ class Simulation:
         num_blocks = len(pos)
         fig_width = max(10, num_blocks * (layer_spacing * 0.5))  # Adjust figure width accordingly
         fig_height = max(6, (max_depth + 1) * branch_spacing * 2)  # Adjust height based on fork depth
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        _, ax = plt.subplots(figsize=(fig_width, fig_height))
     
         # Draw the graph
         nx.draw(G, pos, with_labels=True, node_size=500, node_color=node_colors, arrowsize=20, ax=ax)
@@ -303,10 +300,6 @@ class Simulation:
         plt.savefig(save_path, bbox_inches='tight', dpi=300)  # Save at high resolution for clarity
         plt.close()
         print(f'Plot saved to {save_path}')
-
-
-
-
 
     # Visualization of the network topology
     def visualize_network_topology(self):
@@ -355,27 +348,74 @@ class Simulation:
         plt.close()
         print(f'Plot saved to {save_path}')
 
-    # Method to compare peer blockchains
     def compare_peer_blockchains(self):
-        blockchains = {}
+        # Initialize a list to store data for each peer
+        data = []
+
         for peer_id, peer in self.peers.items():
-            chain = [block.block_id for block in peer.current_longest_chain]
-            blockchains[peer_id] = chain
+            longest_chain_length = len(peer.current_longest_chain)
+            num_blocks_in_longest_chain = len(set(block.block_id for block in peer.current_longest_chain))
+            num_blocks_not_in_longest_chain = len(peer.blockchain) - num_blocks_in_longest_chain
+            num_blocks_generated_by_peer = sum(1 for block in peer.blockchain.values() if block.miner_id == peer_id)
+            ratio_blocks_in_longest_chain = (
+                sum(1 for block in peer.current_longest_chain if block.miner_id == peer_id) / num_blocks_generated_by_peer
+                if num_blocks_generated_by_peer > 0 else 0
+            )
+            
+            # Format the ratio to 5 decimal places
+            ratio_blocks_in_longest_chain = f"{ratio_blocks_in_longest_chain:.5f}"
 
-        differences_found = False
-        peer_ids = list(blockchains.keys())
-        for i in range(len(peer_ids)):
-            for j in range(i + 1, len(peer_ids)):
-                peer_a = peer_ids[i]
-                peer_b = peer_ids[j]
-                if blockchains[peer_a] != blockchains[peer_b]:
-                    print(f"Peers {peer_a} and {peer_b} have different blockchains.")
-                    print(f"Peer {peer_a} chain length: {len(blockchains[peer_a])}, chain: {blockchains[peer_a]}")
-                    print(f"Peer {peer_b} chain length: {len(blockchains[peer_b])}, chain: {blockchains[peer_b]}")
-                    differences_found = True
-                    # Optionally break here to stop at first difference
+            # Append the data for the current peer to the list
+            data.append([
+                peer_id,
+                longest_chain_length,
+                num_blocks_in_longest_chain,
+                num_blocks_not_in_longest_chain,
+                ratio_blocks_in_longest_chain
+            ])
 
-        if not differences_found:
-            print("All peers have identical blockchains.")
-        else:
-            print("Peers have divergent blockchains.")
+        # Create a DataFrame from the data
+        df = pd.DataFrame(data, columns=[
+            'Peer ID',
+            'Longest Chain Length',
+            'Number of Blocks in Longest Chain',
+            'Number of Blocks Not in Longest Chain',
+            'Ratio of Blocks in Longest Chain'
+        ])
+
+        # Plot the table
+        fig, ax = plt.subplots(figsize=(12, 8))  # Set size frame
+        ax.axis('tight')
+        ax.axis('off')
+
+        # Add the table to the axes
+        table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
+
+        # Apply formatting
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 1.2)
+
+        # Set column widths to be flexible
+        table.auto_set_column_width(col=list(range(len(df.columns))))
+
+        # Add color to the table
+        for (i, j), cell in table.get_celld().items():
+            if i == 0:  # Header row
+                cell.set_facecolor('yellow')
+                cell.set_text_props(weight='bold', color='black')
+            elif i % 2 == 0:  # Alternate row color
+                cell.set_facecolor('#f2f2f2')
+            else:
+                cell.set_facecolor('white')
+            if i % 5 == 0 and i != 0:  # Bold line every 5th row
+                cell.set_linewidth(2.0)
+            cell.set_edgecolor('black')
+
+        # Save the table as a PNG file
+        save_directory = 'simOut/tables'
+        os.makedirs(save_directory, exist_ok=True)
+        save_path = os.path.join(save_directory, 'peer_blockchains.png')
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+        print(f'Table saved to {save_path}')
