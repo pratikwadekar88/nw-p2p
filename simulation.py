@@ -7,12 +7,6 @@ from peer import Peer
 from event import EventType, Event
 from network import Network
 from config import *
-import networkx as nx
-import matplotlib
-matplotlib.use('TkAgg')  # or 'Qt5Agg' or 'Agg' choose as per your requirement
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import pandas as pd
 import numpy as np
 import shutil
 
@@ -159,29 +153,3 @@ class Simulation:
     
         self.log_file.write("Simulation ended.\n")
         self.close_log_file()
-
-    def collect_results(self):
-        """
-        Collects the results of the simulation by writing blockchain trees to files for each peer.
-        """
-        parent_dir = "simOut"
-        # Check if the directory exists and remove it
-        if os.path.exists(parent_dir):
-            shutil.rmtree(parent_dir)
-        output_dir = "simOut/blockchainTxns"
-        # Create the blockchainTxn directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Collect and write blockchain trees to files
-        for peer_id, peer in self.peers.items():
-            filename = os.path.join(output_dir, f'blockchain_{peer_id}.txt')
-            with open(filename, 'w') as f:
-                for block in peer.current_longest_chain:
-                    f.write(f'Block ID: {block.block_id}\n')
-                    f.write(f'Prev ID: {block.prev_block_id}\n')
-                    f.write(f'Miner: {block.miner_id}\n')
-                    f.write(f'Time: {block.timestamp}\n')
-                    f.write('Transactions:\n')
-                    for txn in block.transactions:
-                        f.write(f'  TxnID: {txn.txn_id}, Sender: {txn.sender_id}, Receiver: {txn.receiver_id}, Amount: {txn.amount}\n')
-                    f.write('\n')

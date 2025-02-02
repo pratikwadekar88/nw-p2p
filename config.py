@@ -1,12 +1,12 @@
 # config.py
 
 # Simulation parameters
-NUM_PEERS = 10  # Adjusted number of peers for testing
+NUM_PEERS = 20  # Adjusted number of peers for testing
 PERCENT_SLOW = 0.5  # Percentage of slow nodes
 PERCENT_LOW_CPU = 0.5 # Percentage of low CPU nodes
 MEAN_TX_INTERVAL = 5 # Mean time between transactions (increase transaction rate)
-MEAN_BLOCK_INTERVAL = 30 # Decreased block interval for higher mining rate
-SIMULATION_TIME = 300  # Total simulation time in seconds (adjusted for testing)
+MEAN_BLOCK_INTERVAL = 50 # Decreased block interval for higher mining rate
+SIMULATION_TIME = 600  # Total simulation time in seconds (adjusted for testing)
 
 # Network parameters
 MIN_CONNECTIONS = 3

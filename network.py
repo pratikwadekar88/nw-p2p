@@ -3,7 +3,6 @@
 import random
 import heapq
 from config import *
-from event import Event
 from collections import deque
 
 class Network:

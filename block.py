@@ -1,7 +1,6 @@
 # block.py
 
 import uuid
-from transaction import Transaction
 
 class Block:
     def __init__(self, miner_id, prev_block_id, transactions, timestamp):
