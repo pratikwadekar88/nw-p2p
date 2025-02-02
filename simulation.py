@@ -9,7 +9,7 @@ from network import Network
 from config import *
 import networkx as nx
 import matplotlib
-matplotlib.use('TkAgg')  # or 'Qt5Agg' or 'Agg'
+matplotlib.use('TkAgg')  # or 'Qt5Agg' or 'Agg' choose as per your requirement
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import pandas as pd
@@ -18,12 +18,39 @@ import shutil
 
 class Simulation:
     def __init__(self):
+        """
+        Initializes the Simulation class with peers, event queue, current time, and network snapshots.
+        """
         self.peers = {}  # peer_id -> Peer
         self.event_queue = []
         self.current_time = 0
         self.network_snapshots = []  # For capturing network snapshots (if needed)
+        self.parent_dir = "simOut"
+        self.log_file_path = os.path.join(self.parent_dir, 'simulation_log.txt')
+        self.log_file = None
+        self.log_interval = 50  # Adjust as needed
 
+    def close_log_file(self):
+        """
+        Closes the log file.
+        """
+        if self.log_file:
+            self.log_file.close()
+            self.log_file = None
+            
     def setup(self):
+        """
+        Sets up the simulation by initializing peers, assigning hash powers, and initializing the network.
+        """
+        # Check if the directory exists and remove it
+        if os.path.exists(self.parent_dir):
+            shutil.rmtree(self.parent_dir)
+        os.makedirs(self.parent_dir, exist_ok=True)
+
+        # Initialize log file
+        self.log_file = open(self.log_file_path, 'w')
+        self.log_file.write("Simulation setup started.\n")
+
         # Initialize peers
         num_slow = int(PERCENT_SLOW * NUM_PEERS)
         num_low_cpu = int(PERCENT_LOW_CPU * NUM_PEERS)
@@ -44,10 +71,12 @@ class Simulation:
         num_orange = sum(1 for peer in self.peers.values() if peer.is_slow and not peer.is_low_cpu)
         num_green = sum(1 for peer in self.peers.values() if not peer.is_slow and peer.is_low_cpu)
         num_blue = sum(1 for peer in self.peers.values() if not peer.is_slow and not peer.is_low_cpu)
-        print(f"Red nodes (slow & low CPU): {num_red}")
-        print(f"Orange nodes (slow only): {num_orange}")
-        print(f"Green nodes (low CPU only): {num_green}")
-        print(f"Blue nodes (fast & high CPU): {num_blue}")
+
+        # Log the counts
+        self.log_file.write(f"Red nodes (slow & low CPU): {num_red}\n")
+        self.log_file.write(f"Orange nodes (slow only): {num_orange}\n")
+        self.log_file.write(f"Green nodes (low CPU only): {num_green}\n")
+        self.log_file.write(f"Blue nodes (fast & high CPU): {num_blue}\n")
 
         # Assign hash powers
         total_peers = len(self.peers)
@@ -74,7 +103,15 @@ class Simulation:
         # Initialize network
         self.network = Network(self.peers)
 
+        self.log_file.write("Simulation setup ended.\n\n")
+
     def run(self):
+        """
+        Runs the simulation by scheduling initial events, processing events from the event queue, and logging periodically.
+        """
+
+        self.log_file.write("Simulation started.\n")
+
         # Schedule initial events
         for peer in self.peers.values():
             # Transaction generation
@@ -88,7 +125,6 @@ class Simulation:
             
         # Run simulation loop
         last_log_time = 0
-        log_interval = 50  # Adjust as needed
         while self.event_queue:
             event = heapq.heappop(self.event_queue)
             if event.time > SIMULATION_TIME:
@@ -113,15 +149,21 @@ class Simulation:
                 peer.receive_block(block, from_peer, self.current_time, self.event_queue, self.network)
 
             # Periodic logging
-            if self.current_time - last_log_time >= log_interval:
-                print(f"At time {self.current_time:.2f}, chain lengths:")
+            if self.current_time - last_log_time >= self.log_interval:
+                self.log_file.write(f"At time {self.current_time:.2f}, chain lengths:")
                 for pid, p in self.peers.items():
                     chain_length = len(p.current_longest_chain)
                     last_block_id = p.current_longest_chain[-1].block_id[:6] if chain_length > 0 else 'None'
-                    print(f"Peer {pid}: Chain length {chain_length}, Last Block ID: {last_block_id}")
+                    self.log_file.write(f"Peer {pid}: Chain length {chain_length}, Last Block ID: {last_block_id}\n")
                 last_log_time = self.current_time
+    
+        self.log_file.write("Simulation ended.\n")
+        self.close_log_file()
 
     def collect_results(self):
+        """
+        Collects the results of the simulation by writing blockchain trees to files for each peer.
+        """
         parent_dir = "simOut"
         # Check if the directory exists and remove it
         if os.path.exists(parent_dir):
@@ -143,499 +185,3 @@ class Simulation:
                     for txn in block.transactions:
                         f.write(f'  TxnID: {txn.txn_id}, Sender: {txn.sender_id}, Receiver: {txn.receiver_id}, Amount: {txn.amount}\n')
                     f.write('\n')
-   
-
-    # def visualize_blockchain(self, peer_id):
-    #     peer = self.peers[peer_id]
-    #     if not peer.blockchain:
-    #         print(f"Peer {peer_id} has no blocks in their blockchain.")
-    #         return
-
-    #     G = nx.DiGraph()
-
-    #     # Add nodes and edges
-    #     for block in peer.blockchain.values():
-    #         block_id = block.block_id[:6]
-    #         prev_block_id = block.prev_block_id[:6] if block.prev_block_id else None
-    #         G.add_node(block_id, miner=block.miner_id, time=block.timestamp, is_genesis=prev_block_id is None)
-    #         if prev_block_id:
-    #             G.add_edge(prev_block_id, block_id)
-
-    #     # Identify the main chain (longest valid chain)
-    #     longest_chain_blocks = [block.block_id[:6] for block in peer.current_longest_chain]
-
-    #     # Position nodes in a linear horizontal layout
-    #     pos = {}
-    #     layer_spacing = 1  # Reduced horizontal spacing between blocks
-    #     branch_spacing = 1  # Reduced vertical spacing between branches
-    #     y_pos_main = 0
-    #     x_pos = 0
-    #     processed_blocks = set()
-    #     max_depth = 0  # To keep track of the maximum depth for adjusting image height
-
-    #     # Position main chain blocks
-    #     for block_id in longest_chain_blocks:
-    #         pos[block_id] = (x_pos, y_pos_main)
-    #         x_pos += layer_spacing
-    #         processed_blocks.add(block_id)
-
-    #     # Position forked blocks recursively
-    #     def position_branches(block_id, x_parent, y_parent, depth=1):
-    #         nonlocal max_depth
-    #         max_depth = max(max_depth, depth)
-    #         neighbors = list(G.successors(block_id))
-    #         for neighbor in neighbors:
-    #             if neighbor not in pos:
-    #                 pos[neighbor] = (x_parent + layer_spacing, y_parent - branch_spacing * depth)
-    #                 processed_blocks.add(neighbor)
-    #                 position_branches(neighbor, x_parent + layer_spacing, y_parent - branch_spacing * depth, depth + 1)
-
-    #     # Process remaining blocks (forks)
-    #     for block_id in G.nodes():
-    #         if block_id not in processed_blocks:
-    #             pred = list(G.predecessors(block_id))
-    #             if pred:
-    #                 parent_id = pred[0]
-    #                 if parent_id in pos:
-    #                     x_parent, y_parent = pos[parent_id]
-    #                     pos[block_id] = (x_parent + layer_spacing, y_parent - branch_spacing)
-    #                     processed_blocks.add(block_id)
-    #                     position_branches(block_id, x_parent + layer_spacing, y_parent - branch_spacing)
-    #                 else:
-    #                     continue  # Skip if parent not positioned
-    #             else:
-    #                 continue  # Skip blocks without predecessors
-
-    #     # Position unpositioned nodes in a separate cluster to the right of the main and forked blocks
-    #     unpositioned_nodes = [node for node in G.nodes() if node not in pos]
-    #     x_pos_unpositioned = x_pos + 2  # Start from the last x position of the main chain
-    #     y_pos_unpositioned = y_pos_main  # Cluster at the same vertical level as the main chain
-
-    #     cluster_spacing = 0.5  # Spacing within the cluster
-    #     for i, node in enumerate(unpositioned_nodes):
-    #         pos[node] = (x_pos_unpositioned + (i % 5) * cluster_spacing, y_pos_unpositioned - (i // 5) * cluster_spacing)
-
-    #     if len(pos) == 0:
-    #         print(f"No valid blocks to display for Peer {peer_id}")
-    #         return
-
-    #     # Prepare node colors
-    #     node_colors = []
-    #     for node_id, data in G.nodes(data=True):
-    #         if data['is_genesis']:
-    #             node_colors.append('yellow')  # Genesis block
-    #         elif node_id in longest_chain_blocks:
-    #             node_colors.append('lightblue')  # Main chain blocks
-    #         else:
-    #             node_colors.append('gray')  # Forked blocks
-
-    #     # Calculate figure width based on number of blocks and depth of forks
-    #     num_blocks = len(pos)
-    #     fig_width = max(10, num_blocks * (layer_spacing * 0.5))  # Adjust figure width accordingly
-    #     fig_height = max(6, (max_depth + 2) * branch_spacing * 2)  # Adjust height based on fork depth
-    #     _, ax = plt.subplots(figsize=(fig_width, fig_height))
-
-    #     # Draw the graph
-    #     nx.draw(G, pos, with_labels=True, node_size=500, node_color=node_colors, ax=ax)
-
-    #     # Draw edges excluding unpositioned nodes
-    #     edges_to_draw = [(u, v) for u, v in G.edges() if u in pos and v in pos]
-    #     nx.draw_networkx_edges(G, pos, edgelist=edges_to_draw, arrows=True, ax=ax)
-
-    #     # Add miner labels under each node
-    #     miner_labels = {node_id: f"Miner: {data['miner']}" for node_id, data in G.nodes(data=True)}
-    #     nx.draw_networkx_labels(G, pos, labels=miner_labels, font_size=8, verticalalignment='top', font_color='red', ax=ax)
-
-    #     ax.set_title(f'Blockchain Tree for Peer {peer_id}')
-    #     ax.axis('off')
-
-    #     # Create legend
-    #     legend_elements = [
-    #         mpatches.Patch(color='yellow', label='Genesis Block'),
-    #         mpatches.Patch(color='lightblue', label='Main Chain Block'),
-    #         mpatches.Patch(color='gray', label='Forked Block')
-    #     ]
-    #     ax.legend(handles=legend_elements, loc='lower left')
-
-    #     # Specify the directory where you want to save the plot
-    #     save_directory = 'simOut/blockChainTrees'
-    #     os.makedirs(save_directory, exist_ok=True)
-
-    #     # Construct the full path
-    #     save_path = os.path.join(save_directory, f'Peer_{peer_id}.png')
-
-    #     # Save the plot to the specified directory
-    #     plt.savefig(save_path, bbox_inches='tight', dpi=300)  # Save at high resolution for clarity
-    #     plt.close()
-    #     print(f'Plot saved to {save_path}')
-    # def visualize_blockchain(self, peer_id):
-    #     import matplotlib.pyplot as plt
-    #     import matplotlib.patches as mpatches
-    #     import networkx as nx
-    #     import os
-    
-    #     peer = self.peers[peer_id]
-    #     if not peer.blockchain:
-    #         print(f"Peer {peer_id} has no blocks in their blockchain.")
-    #         return
-    
-    #     G = nx.DiGraph()
-    
-    #     # Add nodes and edges
-    #     for block in peer.blockchain.values():
-    #         block_id = block.block_id[:6]
-    #         prev_block_id = block.prev_block_id[:6] if block.prev_block_id else None
-    #         G.add_node(block_id, miner=block.miner_id, time=block.timestamp, transactions=len(block.transactions), is_genesis=(prev_block_id is None))
-    #         if prev_block_id:
-    #             G.add_edge(prev_block_id, block_id)
-    
-    #     # Identify the main chain (longest valid chain)
-    #     longest_chain_blocks = [block.block_id[:6] for block in peer.current_longest_chain]
-    
-    #     # Position nodes in a linear horizontal layout
-    #     pos = {}
-    #     layer_spacing = 2  # Horizontal spacing between blocks
-    #     branch_spacing = 1  # Vertical spacing between branches
-    #     y_pos_main = 0
-    #     x_pos = 0
-    #     processed_blocks = set()
-    #     max_depth = 0  # To keep track of the maximum depth for adjusting image height
-    
-    #     # Position main chain blocks
-    #     for block_id in longest_chain_blocks:
-    #         pos[block_id] = (x_pos, y_pos_main)
-    #         x_pos += layer_spacing
-    #         processed_blocks.add(block_id)
-    
-    #     # Position forked blocks recursively
-    #     def position_branches(block_id, x_parent, y_parent, depth=1):
-    #         nonlocal max_depth
-    #         max_depth = max(max_depth, depth)
-    #         neighbors = list(G.successors(block_id))
-    #         for neighbor in neighbors:
-    #             if neighbor not in pos:
-    #                 pos[neighbor] = (x_parent + layer_spacing, y_parent - branch_spacing * depth)
-    #                 processed_blocks.add(neighbor)
-    #                 position_branches(neighbor, x_parent + layer_spacing, y_parent - branch_spacing * depth, depth + 1)
-    
-    #     # Process remaining blocks (forks)
-    #     for block_id in G.nodes():
-    #         if block_id not in processed_blocks:
-    #             pred = list(G.predecessors(block_id))
-    #             if pred:
-    #                 parent_id = pred[0]
-    #                 if parent_id in pos:
-    #                     x_parent, y_parent = pos[parent_id]
-    #                     pos[block_id] = (x_parent + layer_spacing, y_parent - branch_spacing)
-    #                     processed_blocks.add(block_id)
-    #                     position_branches(block_id, x_parent + layer_spacing, y_parent - branch_spacing)
-    #                 else:
-    #                     continue  # Skip if parent not positioned
-    #             else:
-    #                 pos[block_id] = (x_pos, y_pos_main)  # Position genesis block or any block without predecessors
-    #                 x_pos += layer_spacing
-    
-    #     if len(pos) == 0:
-    #         print(f"No valid blocks to display for Peer {peer_id}")
-    #         return
-    
-    #     # Prepare node labels with table-like structure
-    #     node_labels = {}
-    #     for node_id, data in G.nodes(data=True):
-    #         label = f"Block ID: {node_id}\nMiner: {data['miner']}\nTime: {data['time']}\nTxns: {data['transactions']}"
-    #         node_labels[node_id] = label
-    
-    #     # Prepare node colors
-    #     node_colors = []
-    #     for node_id, data in G.nodes(data=True):
-    #         if data['is_genesis']:
-    #             node_colors.append('yellow')  # Genesis block
-    #         elif node_id in longest_chain_blocks:
-    #             node_colors.append('lightblue')  # Main chain blocks
-    #         else:
-    #             node_colors.append('gray')  # Forked blocks
-    
-    #     # Calculate figure width based on number of blocks and depth of forks
-    #     num_blocks = len(pos)
-    #     fig_width = max(14, num_blocks * (layer_spacing * 1.2))  # Adjust figure width accordingly
-    #     fig_height = max(10, (max_depth + 2) * branch_spacing * 3)  # Adjust height based on fork depth
-    #     _, ax = plt.subplots(figsize=(fig_width, fig_height))
-    
-    #     # Draw the graph
-    #     nx.draw(G, pos, with_labels=False, node_size=5000, node_color=node_colors, ax=ax)
-    
-    #     # Draw edges excluding unpositioned nodes
-    #     edges_to_draw = [(u, v) for u, v in G.edges() if u in pos and v in pos]
-    #     nx.draw_networkx_edges(G, pos, edgelist=edges_to_draw, arrows=True, arrowstyle='-|>', arrowsize=30, ax=ax)
-    
-    #     # Add node labels (table-like)
-    #     nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=10, verticalalignment='center', ax=ax)
-    
-    #     ax.set_title(f'Blockchain Tree for Peer {peer_id}')
-    #     ax.axis('off')
-    
-    #     # Create legend
-    #     legend_elements = [
-    #         mpatches.Patch(color='yellow', label='Genesis Block'),
-    #         mpatches.Patch(color='lightblue', label='Main Chain Block'),
-    #         mpatches.Patch(color='gray', label='Forked Block')
-    #     ]
-    #     ax.legend(handles=legend_elements, loc='lower left')
-    
-    #     # Specify the directory where you want to save the plot
-    #     save_directory = 'simOut/blockChainTrees'
-    #     os.makedirs(save_directory, exist_ok=True)
-    
-    #     # Construct the full path
-    #     save_path = os.path.join(save_directory, f'Peer_{peer_id}.png')
-    
-    #     # Save the plot to the specified directory
-    #     plt.savefig(save_path, bbox_inches='tight', dpi=300)  # Save at high resolution for clarity
-    #     plt.close()
-    #     print(f'Plot saved to {save_path}')
-    def visualize_blockchain(self, peer_id):
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        import networkx as nx
-        import os
-    
-        peer = self.peers[peer_id]
-        if not peer.blockchain:
-            print(f"Peer {peer_id} has no blocks in their blockchain.")
-            return
-    
-        G = nx.DiGraph()
-    
-        # Add nodes and edges
-        for block in peer.blockchain.values():
-            block_id = block.block_id[:6]
-            prev_block_id = block.prev_block_id[:6] if block.prev_block_id else None
-            G.add_node(block_id, miner=block.miner_id, time=block.timestamp, transactions=len(block.transactions), is_genesis=(prev_block_id is None))
-            if prev_block_id:
-                G.add_edge(prev_block_id, block_id)
-    
-        # Identify the main chain (longest valid chain)
-        longest_chain_blocks = [block.block_id[:6] for block in peer.current_longest_chain]
-    
-        # Position nodes in a linear horizontal layout
-        pos = {}
-        layer_spacing = 2  # Horizontal spacing between blocks
-        branch_spacing = 1  # Vertical spacing between branches
-        y_pos_main = 0
-        x_pos = 0
-        processed_blocks = set()
-        max_depth = 0  # To keep track of the maximum depth for adjusting image height
-    
-        # Position main chain blocks
-        for block_id in longest_chain_blocks:
-            pos[block_id] = (x_pos, y_pos_main)
-            x_pos += layer_spacing
-            processed_blocks.add(block_id)
-    
-        # Position forked blocks recursively
-        def position_branches(block_id, x_parent, y_parent, depth=1):
-            nonlocal max_depth
-            max_depth = max(max_depth, depth)
-            neighbors = list(G.successors(block_id))
-            for neighbor in neighbors:
-                if neighbor not in pos:
-                    pos[neighbor] = (x_parent + layer_spacing, y_parent - branch_spacing * depth)
-                    processed_blocks.add(neighbor)
-                    position_branches(neighbor, x_parent + layer_spacing, y_parent - branch_spacing * depth, depth + 1)
-    
-        # Process remaining blocks (forks)
-        for block_id in G.nodes():
-            if block_id not in processed_blocks:
-                pred = list(G.predecessors(block_id))
-                if pred:
-                    parent_id = pred[0]
-                    if parent_id in pos:
-                        x_parent, y_parent = pos[parent_id]
-                        pos[block_id] = (x_parent + layer_spacing, y_parent - branch_spacing)
-                        processed_blocks.add(block_id)
-                        position_branches(block_id, x_parent + layer_spacing, y_parent - branch_spacing)
-                    else:
-                        pos[block_id] = (x_pos, y_pos_main)  # Position genesis block or any block without predecessors
-                        x_pos += layer_spacing
-    
-        # Ensure all blocks are considered
-        unprocessed_blocks = set(G.nodes()) - processed_blocks
-        for block_id in unprocessed_blocks:
-            pos[block_id] = (x_pos, y_pos_main)
-            x_pos += layer_spacing
-    
-        if len(pos) == 0:
-            print(f"No valid blocks to display for Peer {peer_id}")
-            return
-    
-        # Prepare node labels with table-like structure
-        node_labels = {}
-        for node_id, data in G.nodes(data=True):
-            label = f"Block ID: {node_id}\nMiner: {data['miner']}\nTime: {data['time']}\nTxns: {data['transactions']}"
-            node_labels[node_id] = label
-    
-        # Prepare node colors
-        node_colors = []
-        for node_id, data in G.nodes(data=True):
-            if data['is_genesis']:
-                node_colors.append('yellow')  # Genesis block
-            elif node_id in longest_chain_blocks:
-                node_colors.append('lightblue')  # Main chain blocks
-            else:
-                node_colors.append('gray')  # Forked blocks
-    
-        # Calculate figure width based on number of blocks and depth of forks
-        num_blocks = len(pos)
-        fig_width = max(14, num_blocks * (layer_spacing * 1.2))  # Adjust figure width accordingly
-        fig_height = max(10, (max_depth + 2) * branch_spacing * 3)  # Adjust height based on fork depth
-        _, ax = plt.subplots(figsize=(fig_width, fig_height))
-    
-        # Draw the graph
-        nx.draw(G, pos, with_labels=False, node_size=5000, node_color=node_colors, ax=ax)
-    
-        # Draw edges excluding unpositioned nodes
-        edges_to_draw = [(u, v) for u, v in G.edges() if u in pos and v in pos]
-        nx.draw_networkx_edges(G, pos, edgelist=edges_to_draw, arrows=True, arrowstyle='-|>', arrowsize=30, ax=ax)
-    
-        # Add node labels (table-like)
-        nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=10, verticalalignment='center', ax=ax)
-    
-        ax.set_title(f'Blockchain Tree for Peer {peer_id}')
-        ax.axis('off')
-    
-        # Create legend
-        legend_elements = [
-            mpatches.Patch(color='yellow', label='Genesis Block'),
-            mpatches.Patch(color='lightblue', label='Main Chain Block'),
-            mpatches.Patch(color='gray', label='Forked Block')
-        ]
-        ax.legend(handles=legend_elements, loc='lower left')
-    
-        # Specify the directory where you want to save the plot
-        save_directory = 'simOut/blockChainTrees'
-        os.makedirs(save_directory, exist_ok=True)
-    
-        # Construct the full path
-        save_path = os.path.join(save_directory, f'Peer_{peer_id}.png')
-    
-        # Save the plot to the specified directory
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)  # Save at high resolution for clarity
-        plt.close()
-        print(f'Plot saved to {save_path}')
-    # Visualization of the network topology
-    def visualize_network_topology(self):
-        G = nx.Graph()
-
-        # Add nodes with attributes
-        for peer_id, peer in self.peers.items():
-            G.add_node(peer_id, is_slow=peer.is_slow, is_low_cpu=peer.is_low_cpu)
-
-        # Add edges
-        for peer_id, peer in self.peers.items():
-            for neighbor_id in peer.connections:
-                G.add_edge(peer_id, neighbor_id)
-
-        # Node colors based on attributes
-        node_colors = []
-        for node in G.nodes(data=True):
-            is_slow = node[1]['is_slow']
-            is_low_cpu = node[1]['is_low_cpu']
-            if is_slow and is_low_cpu:
-                node_colors.append('red')      # Slow and low CPU
-            elif is_slow and not is_low_cpu:
-                node_colors.append('orange')   # Slow only
-            elif not is_slow and is_low_cpu:
-                node_colors.append('green')    # Low CPU only
-            else:
-                node_colors.append('blue')     # Fast and high CPU
-
-        # Draw the graph
-        plt.figure(figsize=(12, 8))
-        pos = nx.spring_layout(G, k=0.3)
-        nx.draw(G, pos, with_labels=True, node_color=node_colors, node_size=500, font_size=8)
-        plt.title('Network Topology of Peers')
-        plt.axis('off')
-
-        # Specify the directory where you want to save the plot
-        save_directory = 'simOut'
-        # Ensure the directory exists
-        os.makedirs(save_directory, exist_ok=True)
-
-        # Construct the full path
-        save_path = os.path.join(save_directory, 'PeerNetwork.png')
-
-        # Save the plot to the specified directory
-        plt.savefig(save_path)
-        plt.close()
-        print(f'Plot saved to {save_path}')
-
-    def compare_peer_blockchains(self):
-        # Initialize a list to store data for each peer
-        data = []
-
-        for peer_id, peer in self.peers.items():
-            longest_chain_length = len(peer.current_longest_chain)
-            numBlocksByPeerInLC = sum(1 for block in peer.current_longest_chain if block.miner_id == peer_id)
-            numBlocksByPeer = sum(1 for block in peer.blockchain.values() if block.miner_id == peer_id)
-            ratio = (numBlocksByPeerInLC / numBlocksByPeer) if numBlocksByPeer > 0 else 0
-            
-            # Format the ratio to 5 decimal places
-            ratio_blocks_in_longest_chain = f"{ratio:.5f}"
-
-            # Append the data for the current peer to the list
-            data.append([
-                peer_id,
-                longest_chain_length,
-                numBlocksByPeerInLC,
-                numBlocksByPeer,
-                ratio
-            ])
-
-        # Create a DataFrame from the data
-        df = pd.DataFrame(data, columns=[
-            'Peer ID',
-            'LC Length',
-            '# Blocks in LC',
-            '# other Blocks',
-            'Ratio (Blocks in LC/Total Blocks)'
-        ])
-
-        # Plot the table
-        fig, ax = plt.subplots(figsize=(12, 8))  # Set size frame
-        ax.axis('tight')
-        ax.axis('off')
-
-        # Add the table to the axes
-        table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
-
-        # Apply formatting
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1.2, 1.2)
-
-        # Set column widths to be flexible
-        table.auto_set_column_width(col=list(range(len(df.columns))))
-
-        # Add color to the table
-        for (i, j), cell in table.get_celld().items():
-            if i == 0:  # Header row
-                cell.set_facecolor('yellow')
-                cell.set_text_props(weight='bold', color='black')
-            elif i % 2 == 0:  # Alternate row color
-                cell.set_facecolor('#f2f2f2')
-            else:
-                cell.set_facecolor('white')
-            if i % 5 == 0 and i != 0:  # Bold line every 5th row
-                cell.set_linewidth(2.0)
-            cell.set_edgecolor('black')
-
-        # Save the table as a PNG file
-        parent_dir = "simOut"
-        # Check if the directory exists and remove it
-        if os.path.exists(parent_dir):
-            shutil.rmtree(parent_dir)
-        os.makedirs(parent_dir, exist_ok=True)
-        save_path = os.path.join(parent_dir, 'peerBlockchainsTable.png')
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)
-        plt.close()
-        print(f'Table saved to {save_path}')

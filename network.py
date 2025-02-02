@@ -7,15 +7,30 @@ from event import Event
 from collections import deque
 
 class Network:
+    """
+    Represents the network of peers.
+
+    Attributes:
+        peers (dict): Dictionary of peer_id -> Peer.
+        latencies (dict): Dictionary of (peer_id_i, peer_id_j) -> latency parameters.
+    """
     def __init__(self, peers):
+        """
+        Initializes the network with the given peers.
+
+        Args:
+            peers (dict): Dictionary of peer_id -> Peer.
+        """
         self.peers = peers  # Dict of peer_id -> Peer
         self.latencies = {}  # (peer_id_i, peer_id_j) -> latency parameters
 
         self.initialize_topology()
         self.initialize_latencies()
 
-    # Initialize network topology
     def initialize_topology(self):
+        """
+        Initializes the network topology by connecting peers.
+        """
         peer_ids = list(self.peers.keys())
         connected = False
         attempt = 0
@@ -70,8 +85,13 @@ class Network:
         if not connected:
             raise Exception("Failed to create a connected network with the desired degree constraints after multiple attempts.")
 
-    # Check if the network is connected
     def is_connected(self):
+        """
+        Checks if the network is connected.
+
+        Returns:
+            bool: True if the network is connected, False otherwise.
+        """
         visited = set()
         to_visit = deque()
         start_peer = next(iter(self.peers))
@@ -83,8 +103,10 @@ class Network:
                 to_visit.extend(self.peers[peer_id].connections)
         return len(visited) == len(self.peers)
 
-    # Initialize latencies
     def initialize_latencies(self):
+        """
+        Initializes the latencies between connected peers.
+        """
         for peer_i in self.peers.values():
             for peer_j_id in peer_i.connections:
                 key = (peer_i.peer_id, peer_j_id)
@@ -102,8 +124,18 @@ class Network:
                     'link_speed': link_speed
                 }
 
-    # Calculate latency between two peers for a given message
     def calculate_latency(self, from_peer_id, to_peer_id, message):
+        """
+        Calculates the latency between two peers for a given message.
+
+        Args:
+            from_peer_id (int): The ID of the sending peer.
+            to_peer_id (int): The ID of the receiving peer.
+            message (Message): The message being sent.
+
+        Returns:
+            float: The calculated latency.
+        """
         key = (from_peer_id, to_peer_id)
         params = self.latencies.get(key)
         if not params:
@@ -124,6 +156,12 @@ class Network:
         latency = prop_delay + (msg_size / link_speed) + queuing_delay
         return latency
 
-    # Schedule event
     def schedule_event(self, event_queue, event):
+        """
+        Schedules an event in the event queue.
+
+        Args:
+            event_queue (list): The event queue.
+            event (Event): The event to be scheduled.
+        """
         heapq.heappush(event_queue, event)

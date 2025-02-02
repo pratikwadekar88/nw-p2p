@@ -1,7 +1,6 @@
 # peer.py
 
 import random
-import heapq
 from transaction import Transaction
 from block import Block
 from event import EventType, Event
@@ -9,7 +8,32 @@ from config import *
 import copy  # For deep copying data structures
 
 class Peer:
+    """
+    Represents a peer in the network.
+
+    Attributes:
+        peer_id (str): Unique identifier for the peer.
+        is_slow (bool): Indicates if the peer has slow network speed.
+        is_low_cpu (bool): Indicates if the peer has low CPU power.
+        connections (list): List of connected peer IDs.
+        pending_transactions (dict): Pending transactions (txn_id -> Transaction).
+        received_transactions (set): Set of received transaction IDs.
+        blockchain (dict): Blockchain (block_id -> Block).
+        current_longest_chain (list): List of Blocks in the longest chain.
+        current_balances (dict): Stores balances based on the current longest chain.
+        mining_event (Event): Current mining event.
+        mining (bool): Indicates if the peer is currently mining.
+        hash_power (float): Hash power of the peer.
+    """
     def __init__(self, peer_id, is_slow, is_low_cpu):
+        """
+        Initializes a new peer.
+
+        Args:
+            peer_id (str): Unique identifier for the peer.
+            is_slow (bool): Indicates if the peer has slow network speed.
+            is_low_cpu (bool): Indicates if the peer has low CPU power.
+        """
         self.peer_id = peer_id
         self.is_slow = is_slow
         self.is_low_cpu = is_low_cpu
@@ -26,8 +50,10 @@ class Peer:
     def __str__(self):
         return f"Peer {self.peer_id}"
 
-    # Recompute balances based on the current longest chain
     def recompute_balances(self):
+        """
+        Recomputes balances based on the current longest chain.
+        """
         balances = {}
         # Initialize balances
         for block in self.current_longest_chain:
@@ -41,8 +67,15 @@ class Peer:
                 balances[receiver] += amount
         self.current_balances = balances.copy()
 
-    # Generate a transaction
     def generate_transaction(self, current_time, event_queue, network):
+        """
+        Generates a new transaction and schedules the next transaction generation event.
+
+        Args:
+            current_time (float): Current simulation time.
+            event_queue (list): Event queue.
+            network (Network): Network object.
+        """
         receiver_id = random.choice([pid for pid in network.peers if pid != self.peer_id])
         amount = random.uniform(1, 10)
 
@@ -87,8 +120,17 @@ class Peer:
             )
             network.schedule_event(event_queue, next_event)
 
-    # Receive a transaction
     def receive_transaction(self, transaction, from_peer, current_time, event_queue, network):
+        """
+        Receives a transaction and forwards it to connected peers.
+
+        Args:
+            transaction (Transaction): The received transaction.
+            from_peer (str): ID of the peer from which the transaction was received.
+            current_time (float): Current simulation time.
+            event_queue (list): Event queue.
+            network (Network): Network object.
+        """
         if transaction.txn_id not in self.received_transactions:
             self.received_transactions.add(transaction.txn_id)
             self.pending_transactions[transaction.txn_id] = transaction
@@ -108,8 +150,15 @@ class Peer:
                         )
                         network.schedule_event(event_queue, event)
 
-    # Start mining
     def start_mining(self, current_time, event_queue, network):
+        """
+        Starts the mining process for the peer.
+
+        Args:
+            current_time (float): Current simulation time.
+            event_queue (list): Event queue.
+            network (Network): Network object.
+        """
         if self.mining:
             return  # Already mining
 
@@ -130,8 +179,15 @@ class Peer:
             self.mining = False
             self.mining_event = None
 
-    # Block mined
     def block_mined(self, current_time, event_queue, network):
+        """
+        Handles the event when a block is mined by the peer.
+
+        Args:
+            current_time (float): Current simulation time.
+            event_queue (list): Event queue.
+            network (Network): Network object.
+        """
         if self.mining:
             prev_block = self.current_longest_chain[-1] if self.current_longest_chain else None
             prev_block_id = prev_block.block_id if prev_block else None
@@ -196,8 +252,17 @@ class Peer:
             self.mining = False
             self.mining_event = None
 
-    # Receive a block
     def receive_block(self, block, from_peer, current_time, event_queue, network):
+        """
+        Receives a block and updates the blockchain if valid.
+
+        Args:
+            block (Block): The received block.
+            from_peer (str): ID of the peer from which the block was received.
+            current_time (float): Current simulation time.
+            event_queue (list): Event queue.
+            network (Network): Network object.
+        """
         if block.block_id not in self.blockchain:
             # Validate block
             if self.validate_block(block):
@@ -246,8 +311,16 @@ class Peer:
                             )
                             network.schedule_event(event_queue, event)
 
-    # Validate a block
     def validate_block(self, block):
+        """
+        Validates a block by checking its transactions and previous block.
+
+        Args:
+            block (Block): The block to be validated.
+
+        Returns:
+            bool: True if the block is valid, False otherwise.
+        """
         # Check if previous block exists
         if block.prev_block_id and block.prev_block_id not in self.blockchain:
             return False
@@ -281,8 +354,16 @@ class Peer:
                     return False  # Invalid transaction
         return True
 
-    # Construct chain leading to a given block
     def construct_chain(self, block):
+        """
+        Constructs the chain leading to a given block.
+
+        Args:
+            block (Block): The block to construct the chain for.
+
+        Returns:
+            list: List of blocks in the chain.
+        """
         chain = []
         current_block = block
         while current_block:
@@ -292,8 +373,16 @@ class Peer:
         chain.reverse()
         return chain
 
-    # Construct chain up to a block ID (used in validation)
     def construct_chain_by_id(self, block_id):
+        """
+        Constructs the chain up to a given block ID (used in validation).
+
+        Args:
+            block_id (str): The block ID to construct the chain for.
+
+        Returns:
+            list: List of blocks in the chain.
+        """
         chain = []
         current_block = self.blockchain.get(block_id, None)
         while current_block:
@@ -302,12 +391,22 @@ class Peer:
             current_block = self.blockchain.get(prev_block_id, None)
         return chain
 
-    # Update the blockchain with a new block
     def update_blockchain(self, new_block):
+        """
+        Updates the blockchain with a new block.
+
+        Args:
+            new_block (Block): The new block to be added.
+        """
         chain = self.construct_chain(new_block)
         self.current_longest_chain = copy.deepcopy(chain)
         self.recompute_balances()
 
-    # Get the peer's current balance
     def calculate_balance(self):
+        """
+        Calculates the peer's current balance.
+
+        Returns:
+            float: The current balance of the peer.
+        """
         return self.current_balances.get(self.peer_id, INITIAL_BALANCE)
