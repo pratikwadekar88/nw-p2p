@@ -3,6 +3,7 @@
 import heapq
 import os
 import random
+from block import Block
 from peer import Peer
 from event import EventType, Event
 from network import Network
@@ -23,14 +24,6 @@ class Simulation:
         self.log_file_path = os.path.join(self.parent_dir, 'simulation_log.txt')
         self.log_file = None
         self.log_interval = 50  # Adjust as needed
-
-    def close_log_file(self):
-        """
-        Closes the log file.
-        """
-        if self.log_file:
-            self.log_file.close()
-            self.log_file = None
             
     def setup(self):
         """
@@ -97,6 +90,15 @@ class Simulation:
         # Initialize network
         self.network = Network(self.peers)
 
+        # Create and add the genesis block to each peer's blockchain
+        genesis_block = Block(miner_id='Satoshi',
+                              prev_block_id=None,
+                              transactions=[],
+                              timestamp=0)
+        for peer in self.peers.values():
+            peer.blockchain[genesis_block.block_id] = genesis_block
+            peer.current_longest_chain.append(genesis_block)
+            
         self.log_file.write("Simulation setup ended.\n\n")
 
     def run(self):
@@ -152,4 +154,6 @@ class Simulation:
                 last_log_time = self.current_time
     
         self.log_file.write("Simulation ended.\n")
-        self.close_log_file()
+        if self.log_file:
+            self.log_file.close()
+            self.log_file = None
