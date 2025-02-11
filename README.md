@@ -1,9 +1,9 @@
-Installation instructions-
+# Installation instructions  
+`python3 -m venv virt`
 
-python3 -m venv virt
-
-source virt/bin/activate
-
-pip install -r requirements.txt
-
-python3 main.py
+# How to run the simulation?  
+## Enabling virtual environment
+1. `source virt/bin/activate`
+2. `pip install -r requirements.txt`
+## Run the simulation
+`python3 main.py`
