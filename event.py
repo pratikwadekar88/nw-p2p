@@ -1,31 +1,41 @@
-import heapq
+from enum import Enum
+
+
+class EventType(Enum):
+    GENERATE_TRANSACTION = 1
+    RECEIVE_TRANSACTION = 2
+    START_MINING = 3
+    BLOCK_MINED = 4
+    RECEIVE_BLOCK = 5
+
 
 class Event:
-    """Represents a simulation event with a timestamp and callback."""
-    def __init__(self, timestamp, event_type, callback, data=None):
-        self.timestamp = timestamp  # When the event occurs
-        self.event_type = event_type  # Type of event (e.g., "tx_propagate")
-        self.callback = callback  # Function to call when event occurs
-        self.data = data  # Additional data for the event
+    def __init__(self, time, event_type, peer_id, **kwargs):
+        """
+        Initializes an Event instance.
+
+        Parameters:
+        time (float): The time at which the event occurs.
+        event_type (EventType): The type of the event.
+        peer_id (int): The ID of the peer associated with the event.
+        **kwargs: Additional keyword arguments for event-specific data.
+
+        Returns:
+        None
+        """
+        self.time = time
+        self.event_type = event_type
+        self.peer_id = peer_id
+        self.kwargs = kwargs
 
     def __lt__(self, other):
-        """Compare events by timestamp for priority queue."""
-        return self.timestamp < other.timestamp
+        """
+        Compares this event with another event based on time.
 
-class EventQueue:
-    """Priority queue for managing simulation events."""
-    def __init__(self):
-        self.queue = []  # Min-heap for events
-    
-    def schedule(self, event):
-        heapq.heappush(self.queue, (event.timestamp, event))
-        
-    def next_event(self):
-        if not self.queue:
-            return None
-        _, event = heapq.heappop(self.queue)
-        return event
-    
-    def peek_time(self):
-        """Get the timestamp of the next event."""
-        return self.queue[0][0] if self.queue else float('inf')
+        Parameters:
+        other (Event): The other event to compare with.
+
+        Returns:
+        bool: True if this event occurs before other event, False otherwise.
+        """
+        return self.time < other.time

@@ -1,24 +1,25 @@
-# config.py
-SIM_PARAMS = {
-    "n_peers": 20,
-    "z0_slow_percent": 20,
-    "z1_low_cpu_percent": 30,
-    "mean_tx_interval": 10,
-    "block_interval": 600,
-    "simulation_time": 3600,
-    "initial_coins": 1000
-}
+# Simulation parameters
+NUM_PEERS = 20  # Adjusted number of peers for testing
+PERCENT_SLOW = 0.5  # Percentage of slow nodes
+PERCENT_LOW_CPU = 0.5  # Percentage of low CPU nodes
+MEAN_TX_INTERVAL = 5  # Mean time between transactions
+MEAN_BLOCK_INTERVAL = 50  # Decreased block interval for higher mining rate
+SIMULATION_TIME = 600  # Total simulation time in seconds
 
-GENESIS_BLOCK_ID = "0" * 64
-MAX_BLOCK_SIZE_BYTES = 1 * 1024 * 1024
-COINBASE_REWARD = 50
-TX_SIZE = 1024
-SLOW_LINK_SPEED = 5e6  # 5 Mbps
-FAST_LINK_SPEED = 100e6  # 100 Mbps
-MIN_PROPAGATION_DELAY = 0.01  # 10ms
-MAX_PROPAGATION_DELAY = 0.5  # 500ms
-INITIAL_COINS = 1000
-current_time = 0
+# Network parameters
+MIN_CONNECTIONS = 3
+MAX_CONNECTIONS = 6
 
-def update_config(args):
-    SIM_PARAMS.update(vars(args))
+MIN_PROP_DELAY = 0.01  # Cannot be changed
+MAX_PROP_DELAY = 0.5  # Cannot be changed
+
+FAST_LINK_SPEED = 100e6  # 100 Mbps (Cannot be changed)
+SLOW_LINK_SPEED = 5e6    # 5 Mbps (Cannot be changed)
+
+TRANSACTION_SIZE = 1 * 1024  # Transaction size in bytes (1 KB)
+MAX_BLOCK_SIZE = 1 * 1024 * 1024  # Max block size in bytes (1 MB)
+EMPTY_BLOCK_SIZE = 1 * 1024  # Size of empty block (only header included) (1 KB)
+COINBASE_AMOUNT = 50  # Mining reward
+
+# Other parameters
+INITIAL_BALANCE = 1000  # Starting balance for each peer

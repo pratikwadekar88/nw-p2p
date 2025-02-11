@@ -1,50 +1,38 @@
-import time
-import random
-from config import GENESIS_BLOCK_ID, COINBASE_REWARD, MAX_BLOCK_SIZE_BYTES
+import uuid
 
 class Block:
-    """Represents a block in the blockchain."""
-    def __init__(self, prev_hash, miner_id, transactions=None):
-        self.timestamp = time.time()  # Block creation time
-        self.prev_hash = prev_hash  # Hash of the previous block
-        self.miner_id = miner_id  # ID of the miner
-        self.transactions = transactions or []  # List of transactions
-        self.id = f"blk{int(self.timestamp*1000)}{random.randint(1000,9999)}"  # Unique ID
-        
-    @property
-    def size(self):
-        """Calculate block size in bytes."""
-        return 1024 + len(self.transactions) * 1024  # 1KB base + 1KB per tx
+    def __init__(self, miner_id, prev_block_id, transactions, timestamp):
+        """
+        Initialize a new Block instance.
 
-class Blockchain:
-    def __init__(self):
-        self.chain = [self.create_genesis()]
-        self.tree = {GENESIS_BLOCK_ID: []}
-        self.longest_chain = [GENESIS_BLOCK_ID]
-        self.utxo = {GENESIS_BLOCK_ID: INITIAL_COINS}
-        self.block_times = {}
+        Args:
+            miner_id (str): The ID of the miner who mined the block.
+            prev_block_id (str): The ID of the previous block in the chain.
+            transactions (list): A list of Transaction objects included in the block.
+            timestamp (int): The timestamp when the block was created.
+        """
+        self.block_id = str(uuid.uuid4())
+        self.miner_id = miner_id
+        self.prev_block_id = prev_block_id
+        self.transactions = transactions  # List of Transaction objects
+        self.timestamp = timestamp
+        self.size = self.calculate_size()
 
-    def add_block(self, block):
-        if self.validate_block(block):
-            self.tree.setdefault(block.prev_hash, []).append(block)
-            self.block_times[block.id] = current_time
-            self.resolve_forks()
-            return True
-        return False
+    def calculate_size(self):
+        """
+        Calculate the size of the block.
 
-    def resolve_forks(self):
-        max_length = len(self.longest_chain)
-        for branch in self._get_branches():
-            if len(branch) > max_length and self._validate_chain(branch):
-                self.longest_chain = [b.id for b in branch]
-                self.utxo = self._compute_utxo(branch)
-                max_length = len(branch)
+        Returns:
+            int: The size of the block in bytes.
+        """
+        transaction_sizes = sum(txn.size for txn in self.transactions)
+        return transaction_sizes + (1 * 1024)  # Adding 1 KB for block header
+    
+    def calculate_txn_amount(self):
+        """
+        Calculate the total amount of all transactions in the block.
 
-    def _compute_utxo(self, chain):
-        utxo = {GENESIS_BLOCK_ID: INITIAL_COINS}
-        for block in chain[1:]:
-            for tx in block.transactions:
-                utxo[tx.sender] = utxo.get(tx.sender, 0) - tx.amount
-                utxo[tx.receiver] = utxo.get(tx.receiver, 0) + tx.amount
-            utxo[block.miner_id] = utxo.get(block.miner_id, 0) + COINBASE_REWARD
-        return utxo
+        Returns:
+            float: The total amount of all transactions.
+        """
+        return sum(txn.amount for txn in self.transactions)
