@@ -1,5 +1,3 @@
-# simulation.py
-
 import heapq
 import os
 import random
