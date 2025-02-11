@@ -2,12 +2,14 @@
 
 from enum import Enum
 
+
 class EventType(Enum):
     GENERATE_TRANSACTION = 1
     RECEIVE_TRANSACTION = 2
     START_MINING = 3
     BLOCK_MINED = 4
     RECEIVE_BLOCK = 5
+
 
 class Event:
     def __init__(self, time, event_type, peer_id, **kwargs):
@@ -36,6 +38,6 @@ class Event:
         other (Event): The other event to compare with.
 
         Returns:
-        bool: True if this event occurs before the other event, False otherwise.
+        bool: True if this event occurs before other event, False otherwise.
         """
         return self.time < other.time

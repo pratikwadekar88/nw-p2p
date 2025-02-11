@@ -5,14 +5,16 @@ import heapq
 from config import *
 from collections import deque
 
+
 class Network:
     """
     Represents the network of peers.
 
     Attributes:
         peers (dict): Dictionary of peer_id -> Peer.
-        latencies (dict): Dictionary of (peer_id_i, peer_id_j) -> latency parameters.
+        latencies (dict): Dictionary of (peerid_i, peerid_j) -> latency params.
     """
+
     def __init__(self, peers):
         """
         Initializes the network with the given peers.
@@ -42,7 +44,8 @@ class Network:
                 peer.connections = []
 
             # Start by creating a connected backbone
-            # Use a shuffled list to connect peers in a ring (guarantees connectivity)
+            # Use a shuffled list to connect peers in a ring
+            # (guarantees connectivity)
             random.shuffle(peer_ids)
             for i in range(len(peer_ids)):
                 peer_a = peer_ids[i]
@@ -53,12 +56,15 @@ class Network:
                 if peer_a not in self.peers[peer_b].connections:
                     self.peers[peer_b].connections.append(peer_a)
 
-            # Now, ensure each peer has between MIN_CONNECTIONS and MAX_CONNECTIONS connections
+            # Now, ensure each peer has between
+            # MIN_CONNECTIONS and MAX_CONNECTIONS connections
             # Remaining possible peers for each peer
             for peer_id in peer_ids:
                 peer = self.peers[peer_id]
                 while len(peer.connections) < MIN_CONNECTIONS:
-                    possible_peers = [pid for pid in peer_ids if pid != peer_id and pid not in peer.connections]
+                    possible_peers = [pid
+                                      for pid in peer_ids if pid != peer_id
+                                      and pid not in peer.connections]
                     if not possible_peers:
                         break  # No more peers to connect
                     new_peer_id = random.choice(possible_peers)
