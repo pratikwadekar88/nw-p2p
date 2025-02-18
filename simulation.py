@@ -115,7 +115,7 @@ class Simulation:
                 event = Event(event_time, EventType.GENERATE_TRANSACTION, peer.peer_id)
                 self.network.schedule_event(self.event_queue, event)
             # Start mining
-            peer.start_mining(self.current_time, self.event_queue, self.network)
+            peer.schedule_block_mined(self.current_time, self.event_queue, self.network)
             
         # Run simulation loop
         last_log_time = 0
@@ -136,7 +136,7 @@ class Simulation:
                 from_peer = event.kwargs['from_peer']
                 peer.receive_transaction(transaction, from_peer, self.current_time, self.event_queue, self.network)
             elif event.event_type == EventType.BLOCK_MINED:
-                peer.block_mined(self.current_time, self.event_queue, self.network)
+                peer.block_mined(self.current_time, self.event_queue, self.network, event.kwargs["block"])
             elif event.event_type == EventType.RECEIVE_BLOCK:
                 block = event.kwargs['block']
                 from_peer = event.kwargs['from_peer']

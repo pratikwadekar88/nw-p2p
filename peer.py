@@ -19,8 +19,6 @@ class Peer:
         blockchain (dict): Blockchain (block_id -> Block).
         current_longest_chain (list): List of Blocks in the longest chain.
         current_balances (dict): Stores balances based on the current longest chain.
-        mining_event (Event): Current mining event.
-        mining (bool): Indicates if the peer is currently mining.
         hash_power (float): Hash power of the peer.
     """
     def __init__(self, peer_id, is_slow, is_low_cpu):
@@ -41,8 +39,6 @@ class Peer:
         self.blockchain = {}  # block_id -> Block
         self.current_longest_chain = []  # List of Blocks in the longest chain
         self.current_balances = {}  # Stores balances based on the current longest chain
-        self.mining_event = None
-        self.mining = False  # Indicates if the peer is currently mining
         self.hash_power = None  # Will be set later
 
     def __str__(self):
@@ -148,7 +144,7 @@ class Peer:
                         )
                         network.schedule_event(event_queue, event)
 
-    def start_mining(self, current_time, event_queue, network):
+    def schedule_block_mined(self, current_time, event_queue, network):
         """
         Starts the mining process for the peer.
 
@@ -157,40 +153,15 @@ class Peer:
             event_queue (list): Event queue.
             network (Network): Network object.
         """
-        if self.mining:
-            return  # Already mining
-
-        self.mining = True
         total_hash_power = sum(peer.hash_power for peer in network.peers.values())
         mean_time = MEAN_BLOCK_INTERVAL / (self.hash_power / total_hash_power)
         mining_time = random.expovariate(1 / mean_time)
         event_time = current_time + mining_time
-        if event_time <= SIMULATION_TIME:
-            event = Event(
-                time=event_time,
-                event_type=EventType.BLOCK_MINED,
-                peer_id=self.peer_id
-            )
-            self.mining_event = event
-            network.schedule_event(event_queue, event)
-        else:
-            self.mining = False
-            self.mining_event = None
-
-    def block_mined(self, current_time, event_queue, network):
-        """
-        Handles the event when a block is mined by the peer.
-
-        Args:
-            current_time (float): Current simulation time.
-            event_queue (list): Event queue.
-            network (Network): Network object.
-        """
-        if self.mining:
+        if event_time <= SIMULATION_TIME: # schedule this block mined event only if it is less than simulatoin time
             prev_block = self.current_longest_chain[-1] if self.current_longest_chain else None
             prev_block_id = prev_block.block_id if prev_block else None
 
-            # Transactions already in the chain
+            # already included txns in blockchain
             included_txns = set()
             for blk in self.current_longest_chain:
                 included_txns.update(txn.txn_id for txn in blk.transactions)
@@ -224,6 +195,39 @@ class Peer:
                 timestamp=current_time
             )
 
+            # schedule the mining event
+            event = Event(
+                time=event_time,
+                event_type=EventType.BLOCK_MINED,
+                peer_id=self.peer_id,
+                block=block
+            )
+
+            network.schedule_event(event_queue, event)
+
+
+    def block_mined(self, current_time, event_queue, network, block):
+        """
+        Handles the event when a block is mined by the peer.
+
+        Args:
+            current_time (float): Current simulation time.
+            event_queue (list): Event queue.
+            network (Network): Network object.
+        """
+
+        # check if hte chain length is same still
+        candidate_chain = self.construct_chain(block)
+
+        # Compare chain lengths
+        current_chain_length = len(self.current_longest_chain)
+        candidate_chain_length = len(candidate_chain)
+
+        if (candidate_chain_length <= current_chain_length):
+            pass 
+            # drop this block, since another block has already been mined, hence this block mined event is discarded 
+            # assuming this miner is innocent
+        else:
             # Add block to blockchain
             self.blockchain[block.block_id] = block
 
@@ -246,9 +250,9 @@ class Peer:
                     network.schedule_event(event_queue, event)
 
             # Start mining next block
-            self.start_mining(current_time, event_queue, network)
-            self.mining = False
-            self.mining_event = None
+            self.schedule_block_mined(current_time, event_queue, network)
+
+
 
     def receive_block(self, block, from_peer, current_time, event_queue, network):
         """
@@ -280,19 +284,13 @@ class Peer:
                 if candidate_chain_length > current_chain_length:
                     self.update_blockchain(block)
                     print(f"Peer {self.peer_id} switched to a longer chain at time {current_time:.2f}")
-                    if self.mining_event:
-                        self.mining = False
-                        self.mining_event = None
-                    self.start_mining(current_time, event_queue, network)
+                    self.schedule_block_mined(current_time, event_queue, network) # start mining the new block from now
                 elif candidate_chain_length == current_chain_length:
                     # Random tie-breaker
                     if random.choice([True, False]):
                         self.update_blockchain(block)
                         print(f"Peer {self.peer_id} switched to an equal-length chain at time {current_time:.2f}")
-                        if self.mining_event:
-                            self.mining = False
-                            self.mining_event = None
-                        self.start_mining(current_time, event_queue, network)
+                        self.schedule_block_mined(current_time, event_queue, network)
 
                 # Forward block to neighbors except the one it came from
                 for neighbor_id in self.connections:
@@ -308,6 +306,8 @@ class Peer:
                                 from_peer=self.peer_id
                             )
                             network.schedule_event(event_queue, event)
+
+
 
     def validate_block(self, block):
         """
@@ -351,6 +351,7 @@ class Peer:
                 else:
                     return False  # Invalid transaction
         return True
+
 
     def construct_chain(self, block):
         """
