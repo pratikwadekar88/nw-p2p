@@ -224,7 +224,8 @@ class Peer:
         candidate_chain_length = len(candidate_chain)
 
         if (candidate_chain_length <= current_chain_length):
-            pass 
+            for txn in block.transactions:
+                self.pending_transactions[txn.txn_id] = txn
             # drop this block, since another block has already been mined, hence this block mined event is discarded 
             # assuming this miner is innocent
         else:
