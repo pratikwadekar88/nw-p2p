@@ -1,4 +1,6 @@
+# block.py
 import uuid
+from config import EMPTY_BLOCK_SIZE  # Add this import
 
 class Block:
     def __init__(self, miner_id, prev_block_id, transactions, timestamp):
@@ -26,7 +28,7 @@ class Block:
             int: The size of the block in bytes.
         """
         transaction_sizes = sum(txn.size for txn in self.transactions)
-        return transaction_sizes + (1 * 1024)  # Adding 1 KB for block header
+        return transaction_sizes + EMPTY_BLOCK_SIZE  # Add header size
     
     def calculate_txn_amount(self):
         """
