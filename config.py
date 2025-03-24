@@ -2,11 +2,11 @@
 
 # Simulation parameters
 NUM_PEERS = 20                 # Total number of peers
-PERCENT_SLOW = 0.5             # Percentage of slow (honest) nodes
+PERCENT_SLOW = 0.8            # Percentage of slow (honest) nodes. Thee remaining nodes will be malicious.
 PERCENT_LOW_CPU = 0.5          # Percentage of low-CPU nodes
 MEAN_TX_INTERVAL = 5           # Mean time between transactions (seconds)
 MEAN_BLOCK_INTERVAL = 20       # Mean block interval for mining (seconds)
-SIMULATION_TIME = 3000         # Total simulation time (seconds)
+SIMULATION_TIME = 1000         # Total simulation time (seconds)
 
 # Network topology parameters
 MIN_CONNECTIONS = 3
@@ -32,6 +32,3 @@ HASH_SIZE = 64                 # 64 bytes for block hash
 # Financial parameters
 COINBASE_AMOUNT = 50           # Mining reward
 INITIAL_BALANCE = 1000         # Starting balance for each peer
-
-# Malicious node parameters
-MALICIOUS_PERCENT = 0.2        # Percentage of nodes that are malicious
