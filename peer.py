@@ -1,3 +1,5 @@
+# TODO: When a chain gets killed, its txns are freed and added back to mempool
+
 # peer.py
 import random
 import copy
@@ -27,8 +29,10 @@ class Peer:
         # Fields for selfish mining & eclipse attack simulation.
         self.is_malicious = False         # default honest; set in Simulation.setup()
         self.is_ringmaster = False        # for malicious ringmaster only
-        # self.private_chain = []
         self.private_connections = []           # list of peer IDs in private chain
+        self.allowed_hash_requests = set() # when the ringmaster sends broadcast signal, malicious miners will actually stop eclipse attack for these blocks and actually return the block
+        self.broadcast_count = 0;
+
 
 
     def __str__(self):
@@ -120,6 +124,8 @@ class Peer:
 
 
     # Handles the event when a block is mined by the peer.
+    # network refers to overlay network if block is mined by the ringmaster
+    # else it refers to the regular network
     def block_mined(self, current_time, event_queue, network, block):
         # check if the chain length is same still
         candidate_chain = self.construct_chain(block)
@@ -139,7 +145,6 @@ class Peer:
 
             # Update longest chain
             self.update_blockchain(block)
-            print(f"Peer {self.peer_id} mined block {block.block_id[:6]} at time {current_time:.2f}")
 
             # broadcast block hash to neighbors
             block_hash = block.block_id  # Block ID used as hash.
@@ -150,12 +155,13 @@ class Peer:
             if self.is_ringmaster:
                 broadcasting_connections = self.private_connections
                 on_overlay = True; # whether this event happened via regular network or the overlay network
+                print(f"Ringmaster peer {self.peer_id} mined block {block.block_id[:6]} at time {current_time:.2f}")
             else:
                 broadcasting_connections = self.connections
                 on_overlay = False;
+                print(f"Peer {self.peer_id} mined block {block.block_id[:6]} at time {current_time:.2f}")
 
             for neighbor_id in broadcasting_connections:
-                # if we are malicious and target peer is malicious, this will  use overlay network
                 delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
                 event_time = current_time + delay
                 if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
@@ -217,20 +223,22 @@ class Peer:
         if block_hash not in self.pending_hash_requests: 
             self.pending_hash_requests[block_hash] = {
                 'timer': current_time + Tt,
-                'requested_from': [from_peer]
+                'requested_from': [from_peer],
+                'network': [network]
             }
             self.send_get_request(current_time, event_queue, network, block_hash, from_peer, on_overlay, Tt)
         else: # already have hash, waiting for actual block
             if from_peer not in self.pending_hash_requests[block_hash]['requested_from']:
                 self.pending_hash_requests[block_hash]['requested_from'].append(from_peer)
-
+                self.pending_hash_requests[block_hash]['network'].append(network)
 
 
     def send_get_request(self, current_time, event_queue, network, block_hash, target_peer, on_overlay, Tt):
         # Send a GET request for the full block.
-        # if we are malicious and target peer is malicious, then send this request was actually using overlay network
+        # if you received hash from regular network, send get request via regular network
+        # if you received hash from overlay network, send get reqeuest via overlay network
         delay = network.calculate_latency(self.peer_id, target_peer, type('Msg', (), {'size': HASH_SIZE}))
-        event_time = current_time + delay            
+        event_time = current_time + delay
         if (event_time > SIMULATION_TIME):
             return;
         payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': on_overlay}
@@ -240,10 +248,12 @@ class Peer:
         event_queue.schedule_event(timeout_event)
 
 
-    def handle_get_request(self, current_time, event_queue, network, block_hash, from_peer, on_overlay):
+    def handle_get_request(self, current_time, event_queue, network, overlay_network, block_hash, from_peer, on_overlay):
         """
-        When a GET request is received, send the full block if available.
-        Malicious nodes may withhold honest block data per the Eclipse attack.
+        When a GET request is received,
+        If you are a malicious node, and request received from regular network, dont do anything (till allowed_hash_requests set is empty)
+        If you are a malicious node and request received from overlay network, send the block
+        If you are a honest node, send the block
         """
         # if the request is received on overlay network, send the block, otherwise not
         if block_hash not in self.known_hashes:
@@ -252,13 +262,20 @@ class Peer:
         block = self.known_hashes[block_hash]
 
         # if get request received on regular network, withhold the block
+        # unless the allowed_hash_requests set allowes that request
+        # if it does, it means that the ringmaster had issued a broadcast, so then return that block
         if self.is_malicious and not on_overlay:
-            print(f"Malicious Peer {self.peer_id} withholding honest block {block.block_id[:6]} at time {current_time:.2f}")
-            return
+            if (block_hash, from_peer) not in self.allowed_hash_requests:
+                return
         
-        # otherwise send the block if request was received on overlay network
-        # or if you are honest
-        delay = network.calculate_latency(self.peer_id, from_peer, type('Msg', (), {'size': MAX_BLOCK_SIZE}))
+        # otherwise send the block if request was received on overlay network if you received request from overlay network
+        if self.is_malicious and on_overlay:
+            print(f"Malicious Peer {self.peer_id} sending block {block.block_id[:6]} on overlay network at time {current_time:.2f}")
+            delay = overlay_network.calculate_latency(self.peer_id, from_peer, type('Msg', (), {'size': MAX_BLOCK_SIZE}))
+        else: # you are honest or (you are malicious and block was in allowed set) and request is not on overlay
+            print(f"Honest Peer {self.peer_id} sending block {block.block_id[:6]} on regular network at time {current_time:.2f}")
+            delay = network.calculate_latency(self.peer_id, from_peer, type('Msg', (), {'size': MAX_BLOCK_SIZE}))
+
         event_time = current_time + delay
         if (event_time > SIMULATION_TIME):
             return
@@ -322,10 +339,17 @@ class Peer:
     #                         network.schedule_event(event_queue, event)
 
 
-    def receive_block(self, current_time, event_queue, network, block, from_peer, on_overlay, Tt):
+    def receive_block(self, current_time, event_queue, network, overlay_network, block, from_peer, on_overlay, Tt):
         """
         Upon receiving a full block response, validate it and update blockchain if correct.
         Then broadcast its hash further
+        If the block was received from the overlay network, broadcast its hash further on same overlay network
+        If the block was received from regular network, and you are malicious, broadcast its hash further to both overlay and regular network
+        If the block was received from regular network, and you are honest, broadcast its hash further only to regular network
+
+        If you are ringmaster and some other miner reported you a new block that you haven't seen before
+        (which means you haven't mined that block)
+        and that block's candidate chain size is = your blockchain size or your blockchain size - 1, then broadcast the "broadcast" signal on overlay 
         """
 
         block_hash = block.block_id
@@ -350,36 +374,91 @@ class Peer:
                 # Compare chain lengths
                 current_chain_length = len(self.current_longest_chain)
                 candidate_chain_length = len(candidate_chain)
-
-                if candidate_chain_length > current_chain_length:
-                    self.update_blockchain(block)
-                    print(f"Peer {self.peer_id} switched to a longer chain at time {current_time:.2f}")
-                    self.schedule_block_mined(current_time, event_queue) # start mining the new block from now
-                elif candidate_chain_length == current_chain_length:
-                    # Random tie-breaker
-                    if random.choice([True, False]):
+                
+                if (self.is_ringmaster): # if ringmaster sees a new block not in his blockchain, i.e. a block not mined by him => a block mined by an honest miner
+                    # if candidatet_chain_length > current_longest_chain_length
+                        # set this candidate chain as your current longest chain and start mining on it
+                        # also further broadcast this new block's hash on overlay (if received from overlay) or on both (if received from regular)
+                    # if candidate_chain_length == current_longest_chain_length or candidate_chain_length == current_longest_chain_length - 1
+                        # broadcast release message on overlay network
+                    # else
+                        # do nothing and keep mining on current blockchain
+                    if candidate_chain_length > current_chain_length:
                         self.update_blockchain(block)
-                        print(f"Peer {self.peer_id} switched to an equal-length chain at time {current_time:.2f}")
-                        self.schedule_block_mined(current_time, event_queue)
+                        print(f"Peer (Ringmaster) {self.peer_id} switched to a longer chain at time {current_time:.2f}")
+                        self.schedule_block_mined(current_time, event_queue) # start mining the new block from now
 
-                # Forward block hash to neighbors except the one it came from
-                if on_overlay:
-                    broadcasting_connections = self.private_connections
-                    on_overlay = True; # whether this event happened via regular network or the overlay network
+                        for neighbor_id in self.private_connections:
+                                if neighbor_id == from_peer:
+                                    continue;
+                                delay = overlay_network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
+                                event_time = current_time + delay
+                                if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
+                                    continue;
+                                payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': True}
+                                event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
+                                event_queue.schedule_event(event)
+
+                        if not on_overlay:
+                            for neighbor_id in self.connections:
+                                if neighbor_id == from_peer:
+                                    continue;
+                                delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
+                                event_time = current_time + delay
+                                if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
+                                    continue;
+                                payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': on_overlay}
+                                event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
+                                event_queue.schedule_event(event)
+
+
+                    elif candidate_chain_length == current_chain_length or candidate_chain_length == current_chain_length - 1:
+                        # For these blocks, malicious miners will reply to the get requests sent by the honest chain
+                        self.broadcast_count += 1
+                        self.broadcast_private_chain(current_time, event_queue, self.peer_id, network, overlay_network, self.broadcast_count);
+
                 else:
-                    broadcasting_connections = self.connections
-                    on_overlay = False;
+                    # if malicious, 
+                        # then if receivd on regular, broadcast this block hash on both overlay network and regular
+                        # else if reiceved on overlay, broadcast this block hash only on oerlay
+                    # else
+                        # broadcast this block hash only on regular
+                    if self.is_malicious:
+                        for neighbor_id in self.private_connections:
+                                if neighbor_id == from_peer:
+                                    continue;
+                                delay = overlay_network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
+                                event_time = current_time + delay
+                                if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
+                                    continue;
+                                payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': True}
+                                event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
+                                event_queue.schedule_event(event)
 
-                for neighbor_id in broadcasting_connections:
-                    if neighbor_id == from_peer:
-                        continue;
-                    delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
-                    event_time = current_time + delay
-                    if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
-                        continue;
-                    payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': on_overlay}
-                    event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
-                    event_queue.schedule_event(event)
+                        if not on_overlay:
+                            for neighbor_id in self.connections:
+                                if neighbor_id == from_peer:
+                                    continue;
+                                delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
+                                event_time = current_time + delay
+                                if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
+                                    continue;
+                                payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': False}
+                                event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
+                                event_queue.schedule_event(event)
+
+                    else:
+                        for neighbor_id in self.connections:
+                            if neighbor_id == from_peer:
+                                continue;
+                            delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
+                            event_time = current_time + delay
+                            if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
+                                continue;
+                            payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': False}
+                            event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
+                            event_queue.schedule_event(event)
+
 
 
 
@@ -397,7 +476,9 @@ class Peer:
             if current_time >= pending['timer']:
                 if len(pending['requested_from']) > 1:
                     pending['requested_from'] = pending['requested_from'][1:]
+                    pending['network'] = pending['network'][1:]
                 target_peer = pending['requested_from'][0]
+                network = pending['network'][0]
                 self.send_get_request(current_time, event_queue, network, block_hash, target_peer, on_overlay, Tt)
                 pending['timer'] = current_time + Tt
 
@@ -512,37 +593,37 @@ class Peer:
 
 
 
-    # ----- Two-Step Block Propagation Methods -----
+    def broadcast_private_chain(self, current_time, event_queue, from_peer, network, overlay_network, broadcast_count):
+        # sends the "broadcast" message on overlay network
+        # telling all malicious miners to broadcast all blocks in their chains
+        # and broadcasting the hash on the regular network
 
-    # def broadcast_block_hash(self, current_time, event_queue, network, block):
-    #     """
-    #     Broadcast only the block hash to neighbors.
-    #     For honest nodes, broadcast to all peers.
-    #     For malicious nodes, use the malicious overlay if applicable.
-    #     """
-    #     block_hash = block.block_id  # Block ID used as hash.
-    #     self.known_hashes[block_hash] = block
+        if (self.broadcast_count >= broadcast_count):
+            return # already broadcasted
+        
+        self.broadcast_count += 1
+        for neighbor_id in self.private_connections:
+            if neighbor_id == from_peer:
+                continue;
+            delay = overlay_network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
+            event_time = current_time + delay
+            if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
+                continue;
+            payload = {'message': "broadcast private chain", 'from_peer': self.peer_id, 'broadcast_count': self.broadcast_count}
+            event = Event(time=event_time, event_type=EventType.BROADCAST_PRIVATE_CHAIN, peer_id=neighbor_id, **payload)
+            event_queue.schedule_event(event)
 
-    #     # Malicious node handling.
-    #     if self.is_malicious:
-    #         if self.is_ringmaster:
-    #             for neighbor_id in self.connections:
-    #                 if network.peers[neighbor_id].is_malicious:
-    #                     delay = random.uniform(MALICIOUS_MIN_PROP_DELAY, MALICIOUS_MAX_PROP_DELAY)
-    #                     event_time = current_time + delay
-    #                     payload = {'hash': block_hash, 'from_peer': self.peer_id}
-    #                     event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
-    #                     network.schedule_event(event_queue, event)
-    #             self.private_chain.append(block)
-    #         else:
-    #             self.private_chain.append(block)
-    #         return
+        for neighbor_id in self.connections:
+            for block in self.current_longest_chain:
+                block_hash = block.block_id  # Block ID used as hash.
+                delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
+                event_time = current_time + delay
+                if (event_time > SIMULATION_TIME): # dont schedule the event if its time exceeds the simulation time
+                    continue;
+                payload = {'hash': block_hash, 'from_peer': self.peer_id, 'overlay': False}
+                event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
+                event_queue.schedule_event(event)
+                self.allowed_hash_requests.add((block_hash, neighbor_id))
 
-    #     # Honest node broadcasting: send hash message to all neighbors.
-    #     for neighbor_id in self.connections:
-    #         delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE}))
-    #         event_time = current_time + delay
-    #         payload = {'hash': block_hash, 'from_peer': self.peer_id}
-    #         event = Event(time=event_time, event_type=EventType.RECEIVE_HASH, peer_id=neighbor_id, **payload)
-    #         network.schedule_event(event_queue, event)
+
 

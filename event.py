@@ -11,7 +11,7 @@ class EventType(Enum):
     GET_REQUEST = 7           # New: when a node requests full block data
     BLOCK_RESPONSE = 8        # New: when the full block is sent as a response
     TIMEOUT_EVENT = 9         # New: timeout check for GET requests
-    UPDATE_TOPOLOGY = 10      # (Optional: dynamic topology updates)
+    BROADCAST_PRIVATE_CHAIN = 10
 
 class Event:
     def __init__(self, time, event_type, peer_id, **kwargs):

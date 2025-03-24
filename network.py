@@ -120,7 +120,7 @@ class Network:
                         self.peers[removed].private_connections.remove(peer_id)
 
             # After adjustments, check if graph is connected
-            connected = self.is_connected()
+            connected = self.is_privately_connected()
             # Final check: Ensure all peers have between MIN_CONNECTIONS and MAX_CONNECTIONS connections
             degrees_correct = all(MIN_CONNECTIONS <= len(peer.private_connections) <= MAX_CONNECTIONS for peer in self.peers.values())
             if not degrees_correct or not connected:
@@ -141,6 +141,19 @@ class Network:
             if pid not in visited:
                 visited.add(pid)
                 queue.extend(self.peers[pid].connections)
+        return len(visited) == len(self.peers)
+
+
+    def is_privately_connected(self):
+        visited = set()
+        queue = deque()
+        start_peer = next(iter(self.peers))
+        queue.append(start_peer)
+        while queue:
+            pid = queue.popleft()
+            if pid not in visited:
+                visited.add(pid)
+                queue.extend(self.peers[pid].private_connections)
         return len(visited) == len(self.peers)
 
 
