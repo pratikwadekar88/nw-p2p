@@ -1,6 +1,6 @@
 import time
 from simulation import Simulation
-from config import NUM_PEERS
+from config import NUM_PEERS, TIMEOUT
 from visualize import Visualizer
 from visualize_overlay import Visualizer as OverlayVisualizer
 
@@ -9,7 +9,7 @@ if __name__ == '__main__':
 
     sim = Simulation()
     sim.setup()
-    sim.run(50.0)
+    sim.run(TIMEOUT)
 
     visual = Visualizer(sim.peers)
 

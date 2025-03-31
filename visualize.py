@@ -1,4 +1,5 @@
 import os
+from types import NoneType
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -205,3 +206,22 @@ class Visualizer:
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
         plt.close()
         print(f'Table saved to {save_path}')
+
+    def ringmaster_malicious_to_total_ratio(self, peers):
+        # get ringmaster peer's longest chain
+        ringmaster_chain = []
+        for peer in peers.values():
+            if peer.is_ringmaster:
+                ringmaster_chain = peer.current_longest_chain
+                break
+        
+        # get malicious and total blocks in ringmaster's longest Chain
+        malicious_blocks, total_blocks = 0, 0
+        for block in ringmaster_chain:
+            total_blocks += 1
+            if block.is_malicious:
+                malicious_blocks += 1
+        # return percentage of malicious blocks in ringmaster's longest Chain
+        return (malicious_blocks / total_blocks) * 100
+
+   def  

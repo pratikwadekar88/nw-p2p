@@ -32,3 +32,5 @@ HASH_SIZE = 64                 # 64 bytes for block hash
 # Financial parameters
 COINBASE_AMOUNT = 50           # Mining reward
 INITIAL_BALANCE = 1000         # Starting balance for each peer
+
+TIMEOUT = 50                   # Timeout for message propagation (seconds)

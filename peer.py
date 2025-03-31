@@ -28,6 +28,7 @@ class Peer:
         
         # Fields for selfish mining & eclipse attack simulation.
         self.is_malicious = False         # default honest; set in Simulation.setup()
+        self.malicious_node_count = 0     # count of malicious nodes in the network for this peer
         self.is_ringmaster = False        # for malicious ringmaster only
         self.private_connections = []           # list of peer IDs in private chain
         self.allowed_hash_requests = set() # when the ringmaster sends broadcast signal, malicious miners will actually stop eclipse attack for these blocks and actually return the block
@@ -155,6 +156,8 @@ class Peer:
             if self.is_ringmaster:
                 broadcasting_connections = self.private_connections
                 on_overlay = True; # whether this event happened via regular network or the overlay network
+                block.is_malicious = True;
+                self.malicious_node_count += 1;
                 print(f"Ringmaster peer {self.peer_id} mined block {block.block_id[:6]} at time {current_time:.2f}")
             else:
                 broadcasting_connections = self.connections

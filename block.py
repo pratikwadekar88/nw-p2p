@@ -19,6 +19,7 @@ class Block:
         self.transactions = transactions  # List of Transaction objects
         self.timestamp = timestamp
         self.size = self.calculate_size()
+        self.is_malicious = False
 
     def calculate_size(self):
         """
