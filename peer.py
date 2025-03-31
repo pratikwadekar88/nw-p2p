@@ -1,45 +1,34 @@
-import random
-from transaction import Transaction
+# peer.py
+import random, copy, uuid
 from block import Block
+from transaction import Transaction
 from event import EventType, Event
 from config import *
-import copy  # For deep copying data structures
+import time
 
 class Peer:
     """
     Represents a peer in the network.
-
-    Attributes:
-        peer_id (str): Unique identifier for the peer.
-        is_slow (bool): Indicates if the peer has slow network speed.
-        is_low_cpu (bool): Indicates if the peer has low CPU power.
-        connections (list): List of connected peer IDs.
-        pending_transactions (dict): Pending transactions (txn_id -> Transaction).
-        received_transactions (set): Set of received transaction IDs.
-        blockchain (dict): Blockchain (block_id -> Block).
-        current_longest_chain (list): List of Blocks in the longest chain.
-        current_balances (dict): Stores balances based on the current longest chain.
-        hash_power (float): Hash power of the peer.
     """
-    def __init__(self, peer_id, is_slow, is_low_cpu):
-        """
-        Initializes a new peer.
-
-        Args:
-            peer_id (str): Unique identifier for the peer.
-            is_slow (bool): Indicates if the peer has slow network speed.
-            is_low_cpu (bool): Indicates if the peer has low CPU power.
-        """
+    def __init__(self, peer_id, is_slow, is_low_cpu, is_malicious=False):
         self.peer_id = peer_id
         self.is_slow = is_slow
         self.is_low_cpu = is_low_cpu
+        self.is_malicious = is_malicious
         self.connections = []  # List of connected peer IDs
         self.pending_transactions = {}  # txn_id -> Transaction
         self.received_transactions = set()
         self.blockchain = {}  # block_id -> Block
         self.current_longest_chain = []  # List of Blocks in the longest chain
-        self.current_balances = {}  # Stores balances based on the current longest chain
-        self.hash_power = None  # Will be set later
+        self.current_balances = {}
+        self.hash_power = None  # Will be set during simulation setup
+
+        # For enhanced propagation (hash-based broadcast & GET requests)
+        self.block_timers = {}  # { block_hash: { 'timer_start': time, 'pending_senders': [peer_ids] } }
+
+        # For selfish mining: malicious nodes keep a private chain
+        if self.is_malicious:
+            self.private_chain = []  # List of privately mined blocks (not yet broadcast)
 
     def __str__(self):
         return f"Peer {self.peer_id}"
@@ -49,7 +38,6 @@ class Peer:
         Recomputes balances based on the current longest chain.
         """
         balances = {}
-        # Initialize balances
         for block in self.current_longest_chain:
             for txn in block.transactions:
                 sender = txn.sender_id
@@ -63,32 +51,17 @@ class Peer:
 
     def generate_transaction(self, current_time, event_queue, network):
         """
-        Generates a new transaction and schedules the next transaction generation event.
-
-        Args:
-            current_time (float): Current simulation time.
-            event_queue (list): Event queue.
-            network (Network): Network object.
+        Generates a new transaction and schedules the next generation event.
         """
         receiver_id = random.choice([pid for pid in network.peers if pid != self.peer_id])
         amount = random.uniform(1, 10)
-
-        # Get the sender's current balance
         sender_balance = self.current_balances.get(self.peer_id, INITIAL_BALANCE)
-
         if sender_balance >= amount:
-            # Create a new transaction
-            txn = Transaction(
-                sender_id=self.peer_id,
-                receiver_id=receiver_id,
-                amount=amount
-            )
+            txn = Transaction(sender_id=self.peer_id, receiver_id=receiver_id, amount=amount)
             self.pending_transactions[txn.txn_id] = txn
             self.received_transactions.add(txn.txn_id)
-
-            # Broadcast the transaction to connected peers
             for neighbor_id in self.connections:
-                delay = network.calculate_latency(self.peer_id, neighbor_id, txn)
+                delay = network.calculate_latency(self.peer_id, neighbor_id, message_size=txn.size)
                 event_time = current_time + delay
                 if event_time <= SIMULATION_TIME:
                     event = Event(
@@ -99,11 +72,6 @@ class Peer:
                         from_peer=self.peer_id
                     )
                     network.schedule_event(event_queue, event)
-        else:
-            # Insufficient balance; transaction cannot be created
-            pass
-
-        # Schedule the next transaction generation event
         interarrival_time = random.expovariate(1 / MEAN_TX_INTERVAL)
         next_event_time = current_time + interarrival_time
         if next_event_time <= SIMULATION_TIME:
@@ -116,23 +84,14 @@ class Peer:
 
     def receive_transaction(self, transaction, from_peer, current_time, event_queue, network):
         """
-        Receives a transaction and forwards it to connected peers.
-
-        Args:
-            transaction (Transaction): The received transaction.
-            from_peer (str): ID of the peer from which the transaction was received.
-            current_time (float): Current simulation time.
-            event_queue (list): Event queue.
-            network (Network): Network object.
+        Receives and forwards a transaction.
         """
         if transaction.txn_id not in self.received_transactions:
             self.received_transactions.add(transaction.txn_id)
             self.pending_transactions[transaction.txn_id] = transaction
-
-            # Forward transaction to neighbors except the one it came from
             for neighbor_id in self.connections:
                 if neighbor_id != from_peer:
-                    delay = network.calculate_latency(self.peer_id, neighbor_id, transaction)
+                    delay = network.calculate_latency(self.peer_id, neighbor_id, message_size=transaction.size)
                     event_time = current_time + delay
                     if event_time <= SIMULATION_TIME:
                         event = Event(
@@ -146,184 +105,192 @@ class Peer:
 
     def schedule_block_mined(self, current_time, event_queue, network):
         """
-        Starts the mining process for the peer.
-
-        Args:
-            current_time (float): Current simulation time.
-            event_queue (list): Event queue.
-            network (Network): Network object.
+        Schedules a block mining event.
         """
         total_hash_power = sum(peer.hash_power for peer in network.peers.values())
         mean_time = MEAN_BLOCK_INTERVAL / (self.hash_power / total_hash_power)
         mining_time = random.expovariate(1 / mean_time)
         event_time = current_time + mining_time
-        if event_time <= SIMULATION_TIME: # schedule this block mined event only if it is less than simulatoin time
+        if event_time <= SIMULATION_TIME:
             prev_block = self.current_longest_chain[-1] if self.current_longest_chain else None
             prev_block_id = prev_block.block_id if prev_block else None
-
-            # already included txns in blockchain
             included_txns = set()
             for blk in self.current_longest_chain:
                 included_txns.update(txn.txn_id for txn in blk.transactions)
-
-            # Select new transactions
             transactions = []
             block_size = EMPTY_BLOCK_SIZE
-            max_block_size = MAX_BLOCK_SIZE
-
             for txn_id, txn in list(self.pending_transactions.items()):
                 if txn_id not in included_txns:
-                    txn_size = txn.size
-                    if block_size + txn_size <= max_block_size - TRANSACTION_SIZE:
+                    if block_size + txn.size <= MAX_BLOCK_SIZE - TRANSACTION_SIZE:
                         transactions.append(txn)
-                        block_size += txn_size
-                        # Remove from pending transactions
+                        block_size += txn.size
                         del self.pending_transactions[txn_id]
                     else:
-                        break  # Block size limit reached
-
-            # Add coinbase transaction
+                        break
             coinbase_txn = Transaction("0", self.peer_id, COINBASE_AMOUNT)
             transactions.insert(0, coinbase_txn)
-            block_size += TRANSACTION_SIZE  # Add size of coinbase transaction
-
-            # Create new block
             block = Block(
                 miner_id=self.peer_id,
                 prev_block_id=prev_block_id,
                 transactions=transactions,
                 timestamp=current_time
             )
-
-            # schedule the mining event
             event = Event(
                 time=event_time,
                 event_type=EventType.BLOCK_MINED,
                 peer_id=self.peer_id,
                 block=block
             )
-
             network.schedule_event(event_queue, event)
-
 
     def block_mined(self, current_time, event_queue, network, block):
         """
-        Handles the event when a block is mined by the peer.
-
-        Args:
-            current_time (float): Current simulation time.
-            event_queue (list): Event queue.
-            network (Network): Network object.
+        Called when this peer mines a block.
+        For honest nodes, the block is added and its hash is broadcast immediately.
+        For malicious nodes, the block is added to a private chain.
         """
-
-        # check if hte chain length is same still
         candidate_chain = self.construct_chain(block)
-
-        # Compare chain lengths
-        current_chain_length = len(self.current_longest_chain)
-        candidate_chain_length = len(candidate_chain)
-
-        if (candidate_chain_length <= current_chain_length):
+        if len(candidate_chain) <= len(self.current_longest_chain):
             for txn in block.transactions:
                 self.pending_transactions[txn.txn_id] = txn
-            # drop this block, since another block has already been mined, hence this block mined event is discarded 
-            # assuming this miner is innocent
         else:
-            # Add block to blockchain
             self.blockchain[block.block_id] = block
+            if self.is_malicious:
+                # Instead of broadcasting, add the block to the private chain.
+                self.private_chain.append(block)
+                print(f"Malicious peer {self.peer_id} mined a private block (private chain length: {len(self.private_chain)}) at time {current_time:.2f}")
+                # Try to release private chain if conditions are met.
+                self.try_release_private_chain(current_time, event_queue, network)
+            else:
+                self.update_blockchain(block)
+                print(f"Honest peer {self.peer_id} mined block {block.block_id[:6]} at time {current_time:.2f}")
+                self.broadcast_hash(block, current_time, event_queue, network)
+        self.schedule_block_mined(current_time, event_queue, network)
 
-            # Update longest chain
-            self.update_blockchain(block)
-            print(f"Peer {self.peer_id} mined block {block.block_id[:6]} at time {current_time:.2f}")
+    def try_release_private_chain(self, current_time, event_queue, network):
+        """
+        For a malicious node, release the private chain if its lead over the public (honest) chain is at least 1.
+        Here, we define:
+            lead = len(private_chain) - (len(current_longest_chain) - 1)
+        If lead >= 1, the malicious node releases (broadcasts) all blocks in its private chain.
+        """
+        # Calculate the lead; subtracting 1 because the genesis block is common.
+        lead = len(self.private_chain) - (len(self.current_longest_chain) - 1)
+        if lead >= 1:
+            print(f"Malicious peer {self.peer_id} releasing private chain of length {len(self.private_chain)} at time {current_time:.2f} (lead={lead})")
+            for block in self.private_chain:
+                self.update_blockchain(block)
+                self.broadcast_hash(block, current_time, event_queue, network)
+            self.private_chain = []
 
-            # Broadcast block to neighbors
-            for neighbor_id in self.connections:
-                delay = network.calculate_latency(self.peer_id, neighbor_id, block)
-                event_time = current_time + delay
-                if event_time <= SIMULATION_TIME:
-                    event = Event(
-                        time=event_time,
-                        event_type=EventType.RECEIVE_BLOCK,
-                        peer_id=neighbor_id,
-                        block=block,
-                        from_peer=self.peer_id
-                    )
-                    network.schedule_event(event_queue, event)
+    def broadcast_hash(self, block, current_time, event_queue, network):
+        """
+        Broadcasts the block's hash to neighbors.
+        Honest nodes broadcast hash and later respond to GET requests.
+        Malicious nodes normally withhold until releasing private chain,
+        except when responding for their own released blocks.
+        """
+        block_hash = block.block_id  # Using block_id as the hash for simplicity.
+        for neighbor_id in self.connections:
+            delay = network.calculate_latency(self.peer_id, neighbor_id, message_size=64)  # 64B hash
+            event_time = current_time + delay
+            if event_time <= SIMULATION_TIME:
+                event = Event(
+                    time=event_time,
+                    event_type=EventType.HASH_BROADCAST,
+                    peer_id=neighbor_id,
+                    block_hash=block_hash,
+                    sender=self.peer_id,
+                    full_block=block if (self.is_malicious and block in self.current_longest_chain) else None
+                )
+                network.schedule_event(event_queue, event)
 
-            # Start mining next block
-            self.schedule_block_mined(current_time, event_queue, network)
+    def receive_hash(self, block_hash, from_peer, current_time, event_queue, network):
+        """
+        Handles reception of a block hash.
+        """
+        if block_hash in self.blockchain:
+            return
+        if block_hash not in self.block_timers:
+            self.block_timers[block_hash] = {
+                'timer_start': current_time,
+                'pending_senders': [from_peer]
+            }
+            self.send_get_request(block_hash, from_peer, current_time, event_queue, network)
+        else:
+            self.block_timers[block_hash]['pending_senders'].append(from_peer)
+            timer_start = self.block_timers[block_hash]['timer_start']
+            if current_time - timer_start >= TIMEOUT_TT:
+                chosen_sender = random.choice(self.block_timers[block_hash]['pending_senders'])
+                self.send_get_request(block_hash, chosen_sender, current_time, event_queue, network)
+                self.block_timers[block_hash]['timer_start'] = current_time
 
+    def send_get_request(self, block_hash, target_peer, current_time, event_queue, network):
+        """
+        Sends a GET request for the full block data.
+        """
+        delay = network.calculate_latency(self.peer_id, target_peer, message_size=64)  # 64B GET request
+        event_time = current_time + delay
+        if event_time <= SIMULATION_TIME:
+            event = Event(
+                time=event_time,
+                event_type=EventType.GET_REQUEST,
+                peer_id=target_peer,
+                requester=self.peer_id,
+                block_hash=block_hash
+            )
+            network.schedule_event(event_queue, event)
 
+    def receive_get_request(self, requester, block_hash, current_time, event_queue, network):
+        """
+        Handles an incoming GET request.
+        Honest nodes send full block if available.
+        Malicious nodes withhold honest block data (to enforce eclipse) but reply for their own blocks.
+        """
+        if block_hash in self.blockchain:
+            block = self.blockchain[block_hash]
+            if self.is_malicious and block.miner_id != self.peer_id:
+                # Malicious node withholds honest block.
+                return
+            delay = network.calculate_latency(self.peer_id, requester, message_size=MAX_BLOCK_SIZE)
+            event_time = current_time + delay
+            if event_time <= SIMULATION_TIME:
+                event = Event(
+                    time=event_time,
+                    event_type=EventType.RECEIVE_BLOCK,
+                    peer_id=requester,
+                    block=block,
+                    from_peer=self.peer_id
+                )
+                network.schedule_event(event_queue, event)
 
     def receive_block(self, block, from_peer, current_time, event_queue, network):
         """
-        Receives a block and updates the blockchain if valid.
-
-        Args:
-            block (Block): The received block.
-            from_peer (str): ID of the peer from which the block was received.
-            current_time (float): Current simulation time.
-            event_queue (list): Event queue.
-            network (Network): Network object.
+        Handles reception of a full block (e.g. after a GET request).
         """
-        if block.block_id not in self.blockchain:
-            # Validate block
-            if self.validate_block(block):
-                self.blockchain[block.block_id] = block
-
-                # Remove transactions included in the block from pending_transactions
-                for txn in block.transactions:
-                    self.pending_transactions.pop(txn.txn_id, None)
-
-                # Construct candidate chain
-                candidate_chain = self.construct_chain(block)
-
-                # Compare chain lengths
-                current_chain_length = len(self.current_longest_chain)
-                candidate_chain_length = len(candidate_chain)
-
-                if candidate_chain_length > current_chain_length:
-                    self.update_blockchain(block)
-                    print(f"Peer {self.peer_id} switched to a longer chain at time {current_time:.2f}")
-                    self.schedule_block_mined(current_time, event_queue, network) # start mining the new block from now
-                elif candidate_chain_length == current_chain_length:
-                    # Random tie-breaker
-                    if random.choice([True, False]):
-                        self.update_blockchain(block)
-                        print(f"Peer {self.peer_id} switched to an equal-length chain at time {current_time:.2f}")
-                        self.schedule_block_mined(current_time, event_queue, network)
-
-                # Forward block to neighbors except the one it came from
-                for neighbor_id in self.connections:
-                    if neighbor_id != from_peer:
-                        delay = network.calculate_latency(self.peer_id, neighbor_id, block)
-                        event_time = current_time + delay
-                        if event_time <= SIMULATION_TIME:
-                            event = Event(
-                                time=event_time,
-                                event_type=EventType.RECEIVE_BLOCK,
-                                peer_id=neighbor_id,
-                                block=block,
-                                from_peer=self.peer_id
-                            )
-                            network.schedule_event(event_queue, event)
-
-
+        if block.block_id not in self.blockchain and self.validate_block(block):
+            self.blockchain[block.block_id] = block
+            candidate_chain = self.construct_chain(block)
+            if len(candidate_chain) > len(self.current_longest_chain):
+                self.update_blockchain(block)
+                print(f"Peer {self.peer_id} updated chain with block {block.block_id[:6]} at time {current_time:.2f}")
+                if not self.is_malicious:
+                    self.broadcast_hash(block, current_time, event_queue, network)
+                else:
+                    # For malicious nodes, if an honest block arrives that diminishes their lead, abandon private chain.
+                    if hasattr(self, 'private_chain') and self.private_chain:
+                        lead = len(self.private_chain) - (len(self.current_longest_chain) - 1)
+                        if lead < 1:
+                            print(f"Malicious peer {self.peer_id} abandoning private chain due to honest block at time {current_time:.2f}")
+                            self.private_chain = []
+            self.block_timers.pop(block.block_id, None)
 
     def validate_block(self, block):
         """
-        Validates a block by checking its transactions and previous block.
-
-        Args:
-            block (Block): The block to be validated.
-
-        Returns:
-            bool: True if the block is valid, False otherwise.
+        Validates a block by checking previous block existence and transactions.
         """
-        # Check if previous block exists
         if block.prev_block_id and block.prev_block_id not in self.blockchain:
             return False
-        # Build the chain up to the previous block
         chain = self.construct_chain_by_id(block.prev_block_id)
         balances = {}
         for blk in chain:
@@ -335,12 +302,11 @@ class Peer:
                 balances.setdefault(receiver, INITIAL_BALANCE)
                 balances[sender] -= amount
                 balances[receiver] += amount
-        # Validate transactions in the new block
         for txn in block.transactions:
             sender = txn.sender_id
             receiver = txn.receiver_id
             amount = txn.amount
-            if sender == "0":  # Coinbase transaction
+            if sender == "0":  # Coinbase
                 balances.setdefault(receiver, INITIAL_BALANCE)
                 balances[receiver] += amount
             else:
@@ -350,19 +316,12 @@ class Peer:
                     balances[sender] -= amount
                     balances[receiver] += amount
                 else:
-                    return False  # Invalid transaction
+                    return False
         return True
-
 
     def construct_chain(self, block):
         """
         Constructs the chain leading to a given block.
-
-        Args:
-            block (Block): The block to construct the chain for.
-
-        Returns:
-            list: List of blocks in the chain.
         """
         chain = []
         current_block = block
@@ -375,13 +334,7 @@ class Peer:
 
     def construct_chain_by_id(self, block_id):
         """
-        Constructs the chain up to a given block ID (used in validation).
-
-        Args:
-            block_id (str): The block ID to construct the chain for.
-
-        Returns:
-            list: List of blocks in the chain.
+        Constructs the chain up to a given block ID.
         """
         chain = []
         current_block = self.blockchain.get(block_id, None)
@@ -393,10 +346,7 @@ class Peer:
 
     def update_blockchain(self, new_block):
         """
-        Updates the blockchain with a new block.
-
-        Args:
-            new_block (Block): The new block to be added.
+        Updates the local blockchain with a new block.
         """
         chain = self.construct_chain(new_block)
         self.current_longest_chain = copy.deepcopy(chain)
@@ -404,9 +354,6 @@ class Peer:
 
     def calculate_balance(self):
         """
-        Calculates the peer's current balance.
-
-        Returns:
-            float: The current balance of the peer.
+        Returns the current balance for this peer.
         """
         return self.current_balances.get(self.peer_id, INITIAL_BALANCE)
