@@ -207,10 +207,10 @@ class Visualizer:
         plt.close()
         print(f'Table saved to {save_path}')
 
-    def ringmaster_malicious_to_total_ratio(self, peers):
+    def ringmaster_malicious_to_total_ratio(self):
         # get ringmaster peer's longest chain
         ringmaster_chain = []
-        for peer in peers.values():
+        for peer in self.peers.values():
             if peer.is_ringmaster:
                 ringmaster_chain = peer.current_longest_chain
                 break
@@ -224,4 +224,19 @@ class Visualizer:
         # return percentage of malicious blocks in ringmaster's longest Chain
         return (malicious_blocks / total_blocks) * 100
 
-   def  
+    def ringmaster_malicious_to_total_malicious_ratio(self):
+        # get ringmaster peer's longest chain
+        ringmaster_chain, peer_id = [], -1
+        for peer in self.peers.values():
+            if peer.is_ringmaster:
+                peer_id = peer.peer_id
+                ringmaster_chain = peer.current_longest_chain
+                break
+        
+        # get malicious and total malicious blocks in ringmaster's longest Chain
+        malicious_blocks = 0
+        for block in ringmaster_chain:
+            if block.is_malicious:
+                malicious_blocks += 1
+        # return percentage of malicious blocks in ringmaster's longest Chain
+        return (malicious_blocks / max(peers[peer_id].malicious_node_count,1)) * 100
