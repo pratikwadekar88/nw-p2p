@@ -136,29 +136,54 @@ class Visualizer:
         plt.close()
         print(f'Network topology plot saved to {save_path}')
 
+    # def visualize_overlay_network(self, network):
+    #     """
+    #     Visualizes the malicious overlay network.
+    #     Overlay connections are defined by the extra low propagation delays between malicious nodes.
+    #     (Edges with a prop_delay between 0.001 and 0.01 seconds are assumed to be part of the overlay.)
+    #     """
+    #     G = nx.Graph()
+    #     # Collect malicious nodes.
+    #     malicious_ids = [pid for pid, p in self.peers.items() if p.is_malicious]
+    #     for pid in malicious_ids:
+    #         G.add_node(pid)
+    #     # Add overlay edges based on latency entries.
+    #     overlay_edges = []
+    #     for i in range(len(malicious_ids)):
+    #         for j in range(i+1, len(malicious_ids)):
+    #             pid = malicious_ids[i]
+    #             other = malicious_ids[j]
+    #             key = (pid, other)
+    #             if key in network.latencies:
+    #                 delay = network.latencies[key]['prop_delay']
+    #                 if 0.001 <= delay <= 0.01:
+    #                     overlay_edges.append((pid, other))
+    #     G.add_edges_from(overlay_edges)
+    #     plt.figure(figsize=(8,6))
+    #     pos = nx.spring_layout(G, k=0.5)
+    #     nx.draw(G, pos, with_labels=True, node_color='red', node_size=700, font_size=10)
+    #     plt.title('Malicious Overlay Network')
+    #     plt.axis('off')
+    #     save_directory = 'simOut'
+    #     os.makedirs(save_directory, exist_ok=True)
+    #     save_path = os.path.join(save_directory, 'OverlayNetwork.png')
+    #     plt.savefig(save_path)
+    #     plt.close()
+    #     print(f'Overlay network plot saved to {save_path}')
     def visualize_overlay_network(self, network):
         """
         Visualizes the malicious overlay network.
-        Overlay connections are defined by the extra low propagation delays between malicious nodes.
-        (Edges with a prop_delay between 0.001 and 0.01 seconds are assumed to be part of the overlay.)
+        Overlay connections are defined by the low propagation delays (1ms to 10ms) in the overlay network.
         """
         G = nx.Graph()
-        # Collect malicious nodes.
+        # Collect malicious node IDs.
         malicious_ids = [pid for pid, p in self.peers.items() if p.is_malicious]
         for pid in malicious_ids:
             G.add_node(pid)
-        # Add overlay edges based on latency entries.
-        overlay_edges = []
-        for i in range(len(malicious_ids)):
-            for j in range(i+1, len(malicious_ids)):
-                pid = malicious_ids[i]
-                other = malicious_ids[j]
-                key = (pid, other)
-                if key in network.latencies:
-                    delay = network.latencies[key]['prop_delay']
-                    if 0.001 <= delay <= 0.01:
-                        overlay_edges.append((pid, other))
-        G.add_edges_from(overlay_edges)
+        # Add overlay edges from the overlay_network dictionary in the network instance.
+        for pid, overlay_peers in network.overlay_network.items():
+            for other in overlay_peers:
+                G.add_edge(pid, other)
         plt.figure(figsize=(8,6))
         pos = nx.spring_layout(G, k=0.5)
         nx.draw(G, pos, with_labels=True, node_color='red', node_size=700, font_size=10)

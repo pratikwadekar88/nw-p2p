@@ -12,6 +12,7 @@ class Network:
         self.latencies = {}  # (peer_i, peer_j) -> latency parameters
         self.initialize_topology()
         self.initialize_latencies()
+        self.initialize_overlay_network()
 
     def initialize_topology(self):
         """
@@ -75,56 +76,129 @@ class Network:
 
     def initialize_latencies(self):
         """
-        Initializes latencies between connected peers.
-        For general communication, propagation delay is chosen uniformly between MIN_PROP_DELAY and MAX_PROP_DELAY.
-        For malicious overlay connections, a subset of connections is established with low delays (1ms to 10ms).
+        Initializes latencies for all direct connections.
+        For malicious-to-malicious connections, if an overlay link exists, we use a low propagation delay (1ms to 10ms) and FAST_LINK_SPEED.
+        Otherwise, for general communication, propagation delay is chosen uniformly between MIN_PROP_DELAY and MAX_PROP_DELAY.
         """
-        # Initialize regular latencies for all direct connections
         for peer_i in self.peers.values():
             for peer_j_id in peer_i.connections:
                 key = (peer_i.peer_id, peer_j_id)
-                prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
                 peer_j = self.peers[peer_j_id]
-                if peer_i.is_slow or peer_j.is_slow:
-                    link_speed = SLOW_LINK_SPEED
-                else:
+                # Check if both nodes are malicious and if we want to simulate overlay behavior.
+                if peer_i.is_malicious and peer_j.is_malicious:
+                    # For malicious-to-malicious connections, use low delay.
+                    prop_delay = random.uniform(0.001, 0.01)  # 1ms to 10ms
                     link_speed = FAST_LINK_SPEED
+                else:
+                    # For all other connections, use general parameters.
+                    prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
+                    # If either node is slow, use slow link speed; otherwise fast.
+                    link_speed = SLOW_LINK_SPEED
                 self.latencies[key] = {'prop_delay': prop_delay, 'link_speed': link_speed}
 
-        # Create overlay network among malicious nodes
+    def initialize_overlay_network(self):
+        """
+        Creates a separate overlay network among malicious nodes ensuring connectivity
+        with degree constraints.
+
+        For each malicious node:
+          - First, connect them in a ring to guarantee connectivity.
+          - Then add extra random overlay connections until each node has at least OVERLAY_MIN
+            connections (up to OVERLAY_MAX, if possible).
+
+        Overlay links use low propagation delays (1ms to 10ms) and FAST_LINK_SPEED.
+        The overlay connections are stored in self.overlay_network, and corresponding latency entries
+        are added to self.latencies.
+        """
+        # Define desired overlay degree constraints.
+        OVERLAY_MIN = 3
+        OVERLAY_MAX = 6
+
+        # Get list of malicious node IDs.
         malicious_ids = [pid for pid, p in self.peers.items() if p.is_malicious]
+        # If there are no malicious nodes, set overlay_network to an empty dict.
+        if not malicious_ids:
+            self.overlay_network = {}
+            return
+
+        # Initialize overlay_network dictionary.
+        self.overlay_network = {pid: [] for pid in malicious_ids}
+
+        # --- Step 1: Connect malicious nodes in a ring to guarantee connectivity ---
+        random.shuffle(malicious_ids)
+        for i in range(len(malicious_ids)):
+            pid = malicious_ids[i]
+            next_pid = malicious_ids[(i + 1) % len(malicious_ids)]
+            if next_pid not in self.overlay_network[pid]:
+                self.overlay_network[pid].append(next_pid)
+            if pid not in self.overlay_network[next_pid]:
+                self.overlay_network[next_pid].append(pid)
+            # Set overlay latency for these links (1ms to 10ms)
+            prop_delay = random.uniform(0.001, 0.01)
+            self.latencies[(pid, next_pid)] = {'prop_delay': prop_delay, 'link_speed': FAST_LINK_SPEED}
+            self.latencies[(next_pid, pid)] = {'prop_delay': prop_delay, 'link_speed': FAST_LINK_SPEED}
+
+        # --- Step 2: Add extra random overlay connections until each malicious node has at least OVERLAY_MIN links ---
         for pid in malicious_ids:
-            # Each malicious node connects to a random subset of 3 to 6 other malicious nodes (if available)
-            available = [other for other in malicious_ids if other != pid]
-            num_overlay = random.randint(3, 6)
-            overlay_peers = random.sample(available, min(num_overlay, len(available)))
-            for other in overlay_peers:
-                key = (pid, other)
-                # Assign a low propagation delay (1ms to 10ms) for overlay links
+            while len(self.overlay_network[pid]) < OVERLAY_MIN:
+                # Select from malicious nodes not already connected to pid.
+                possible = [other for other in malicious_ids if other != pid and other not in self.overlay_network[pid]]
+                if not possible:
+                    break  # No additional nodes available.
+                new_connection = random.choice(possible)
+                # Add symmetric connection.
+                self.overlay_network[pid].append(new_connection)
+                if pid not in self.overlay_network[new_connection]:
+                    self.overlay_network[new_connection].append(pid)
+                # Assign low overlay latency.
                 prop_delay = random.uniform(0.001, 0.01)
-                self.latencies[key] = {'prop_delay': prop_delay, 'link_speed': FAST_LINK_SPEED}
-                reverse_key = (other, pid)
-                self.latencies[reverse_key] = {'prop_delay': prop_delay, 'link_speed': FAST_LINK_SPEED}
+                self.latencies[(pid, new_connection)] = {'prop_delay': prop_delay, 'link_speed': FAST_LINK_SPEED}
+                self.latencies[(new_connection, pid)] = {'prop_delay': prop_delay, 'link_speed': FAST_LINK_SPEED}
+
+        # --- Optional: Trim connections if any node exceeds OVERLAY_MAX links ---
+        for pid in malicious_ids:
+            while len(self.overlay_network[pid]) > OVERLAY_MAX:
+                removed = random.choice(self.overlay_network[pid])
+                self.overlay_network[pid].remove(removed)
+                if pid in self.overlay_network[removed]:
+                    self.overlay_network[removed].remove(pid)
+                # Optionally, remove these latency entries:
+                self.latencies.pop((pid, removed), None)
+                self.latencies.pop((removed, pid), None)
 
     def calculate_latency(self, from_peer_id, to_peer_id, message_size=None):
         """
-        Calculates latency for a message.
+        Calculates latency for a message from from_peer_id to to_peer_id.
+        If an overlay link exists in self.latencies, that is used.
+        Otherwise, if both nodes are malicious, a low propagation delay (1-10ms) and fast link speed are used.
+        Else, a general latency is used (MIN_PROP_DELAY to MAX_PROP_DELAY and SLOW_LINK_SPEED if either node is slow).
         """
         key = (from_peer_id, to_peer_id)
-        params = self.latencies.get(key)
-        if not params:
-            prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
-            link_speed = FAST_LINK_SPEED
+        if key in self.latencies:
+            params = self.latencies[key]
         else:
-            prop_delay = params['prop_delay']
-            link_speed = params['link_speed']
-        if message_size is None:
-            msg_size = 0
-        else:
-            msg_size = message_size * 8  # Convert bytes to bits
-        mean_dij = (96 * 1024) / link_speed
+            # Retrieve the two peers.
+            from_peer = self.peers[from_peer_id]
+            to_peer = self.peers[to_peer_id]
+            # If both are malicious, use overlay-like parameters.
+            if from_peer.is_malicious and to_peer.is_malicious:
+                prop_delay = random.uniform(0.001, 0.01)  # 1ms to 10ms
+                link_speed = FAST_LINK_SPEED
+            else:
+                # If either node is slow, use slow link speed; otherwise, fast.
+                if from_peer.is_slow or to_peer.is_slow:
+                    prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
+                    link_speed = SLOW_LINK_SPEED
+                else:
+                    prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
+                    link_speed = FAST_LINK_SPEED
+            params = {'prop_delay': prop_delay, 'link_speed': link_speed}
+
+        # Convert message size from bytes to bits.
+        msg_size = 0 if message_size is None else message_size * 8
+        mean_dij = (96 * 1024) / params['link_speed']
         queuing_delay = random.expovariate(1 / mean_dij)
-        latency = prop_delay + (msg_size / link_speed) + queuing_delay
+        latency = params['prop_delay'] + (msg_size / params['link_speed']) + queuing_delay
         return latency
 
     def schedule_event(self, event_queue, event):
