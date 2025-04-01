@@ -24,11 +24,13 @@ class Peer:
         self.hash_power = None  # Will be set during simulation setup
 
         # For enhanced propagation (hash-based broadcast & GET requests)
-        self.block_timers = {}  # { block_hash: { 'timer_start': time, 'pending_senders': [peer_ids] } }
+        # Structure: { block_hash: { 'timer_start': time, 'pending_senders': [peer_ids] } }
+        self.block_timers = {}
 
-        # For selfish mining: malicious nodes keep a private chain
+        # For selfish mining: malicious nodes keep a private chain.
         if self.is_malicious:
-            self.private_chain = []  # List of privately mined blocks (not yet broadcast)
+            self.private_chain = []  # Private blocks not yet broadcast
+            self.ringmaster = False  # Will be set in simulation if this node is chosen as ringmaster
 
     def __str__(self):
         return f"Peer {self.peer_id}"
@@ -146,8 +148,9 @@ class Peer:
     def block_mined(self, current_time, event_queue, network, block):
         """
         Called when this peer mines a block.
-        For honest nodes, the block is added and its hash is broadcast immediately.
-        For malicious nodes, the block is added to a private chain.
+        - Honest nodes update their blockchain and immediately broadcast the hash.
+        - Malicious nodes add the block to their private chain.
+          If the node is the ringmaster, it may instruct release of its private chain.
         """
         candidate_chain = self.construct_chain(block)
         if len(candidate_chain) <= len(self.current_longest_chain):
@@ -156,11 +159,12 @@ class Peer:
         else:
             self.blockchain[block.block_id] = block
             if self.is_malicious:
-                # Instead of broadcasting, add the block to the private chain.
+                # Add block to private chain.
                 self.private_chain.append(block)
                 print(f"Malicious peer {self.peer_id} mined a private block (private chain length: {len(self.private_chain)}) at time {current_time:.2f}")
-                # Try to release private chain if conditions are met.
-                self.try_release_private_chain(current_time, event_queue, network)
+                # If this node is the ringmaster, instruct release when conditions are met.
+                if self.ringmaster:
+                    self.try_release_private_chain(current_time, event_queue, network)
             else:
                 self.update_blockchain(block)
                 print(f"Honest peer {self.peer_id} mined block {block.block_id[:6]} at time {current_time:.2f}")
@@ -169,15 +173,13 @@ class Peer:
 
     def try_release_private_chain(self, current_time, event_queue, network):
         """
-        For a malicious node, release the private chain if its lead over the public (honest) chain is at least 1.
-        Here, we define:
-            lead = len(private_chain) - (len(current_longest_chain) - 1)
-        If lead >= 1, the malicious node releases (broadcasts) all blocks in its private chain.
+        For a malicious ringmaster, release the private chain if its lead over the public chain is at least 1.
+        Lead is defined as: len(private_chain) - (len(current_longest_chain) - 1)
+        Upon release, the node broadcasts its private blocks via the fast malicious overlay.
         """
-        # Calculate the lead; subtracting 1 because the genesis block is common.
         lead = len(self.private_chain) - (len(self.current_longest_chain) - 1)
         if lead >= 1:
-            print(f"Malicious peer {self.peer_id} releasing private chain of length {len(self.private_chain)} at time {current_time:.2f} (lead={lead})")
+            print(f"Ringmaster {self.peer_id} releasing private chain of length {len(self.private_chain)} at time {current_time:.2f} (lead={lead})")
             for block in self.private_chain:
                 self.update_blockchain(block)
                 self.broadcast_hash(block, current_time, event_queue, network)
@@ -186,11 +188,10 @@ class Peer:
     def broadcast_hash(self, block, current_time, event_queue, network):
         """
         Broadcasts the block's hash to neighbors.
-        Honest nodes broadcast hash and later respond to GET requests.
-        Malicious nodes normally withhold until releasing private chain,
-        except when responding for their own released blocks.
+        - Honest nodes broadcast the hash and then forward the full block upon GET requests.
+        - Malicious nodes typically withhold honest blocks unless releasing their private chain.
         """
-        block_hash = block.block_id  # Using block_id as the hash for simplicity.
+        block_hash = block.block_id  # For simplicity, we use block_id as the hash.
         for neighbor_id in self.connections:
             delay = network.calculate_latency(self.peer_id, neighbor_id, message_size=64)  # 64B hash
             event_time = current_time + delay
@@ -208,6 +209,7 @@ class Peer:
     def receive_hash(self, block_hash, from_peer, current_time, event_queue, network):
         """
         Handles reception of a block hash.
+        If the block is not already in the local blockchain, a GET request is initiated.
         """
         if block_hash in self.blockchain:
             return
@@ -244,13 +246,14 @@ class Peer:
     def receive_get_request(self, requester, block_hash, current_time, event_queue, network):
         """
         Handles an incoming GET request.
-        Honest nodes send full block if available.
-        Malicious nodes withhold honest block data (to enforce eclipse) but reply for their own blocks.
+        If ENABLE_ECLIP_ATTACK is True, malicious nodes withhold honest blocks (except for blocks they mined).
+        Otherwise, all nodes forward the full block data.
         """
         if block_hash in self.blockchain:
             block = self.blockchain[block_hash]
-            if self.is_malicious and block.miner_id != self.peer_id:
-                # Malicious node withholds honest block.
+            # If eclipse attack is enabled and this node is malicious (and not the miner of the block),
+            # then withhold the block.
+            if ENABLE_ECLIP_ATTACK and self.is_malicious and block.miner_id != self.peer_id:
                 return
             delay = network.calculate_latency(self.peer_id, requester, message_size=MAX_BLOCK_SIZE)
             event_time = current_time + delay
@@ -266,7 +269,8 @@ class Peer:
 
     def receive_block(self, block, from_peer, current_time, event_queue, network):
         """
-        Handles reception of a full block (e.g. after a GET request).
+        Handles reception of a full block (e.g., in response to a GET request).
+        If the block is valid and not already present, update the local blockchain.
         """
         if block.block_id not in self.blockchain and self.validate_block(block):
             self.blockchain[block.block_id] = block
@@ -277,7 +281,8 @@ class Peer:
                 if not self.is_malicious:
                     self.broadcast_hash(block, current_time, event_queue, network)
                 else:
-                    # For malicious nodes, if an honest block arrives that diminishes their lead, abandon private chain.
+                    # If a malicious node receives an honest block that reduces its private chain lead,
+                    # it may abandon its private chain.
                     if hasattr(self, 'private_chain') and self.private_chain:
                         lead = len(self.private_chain) - (len(self.current_longest_chain) - 1)
                         if lead < 1:
@@ -287,7 +292,7 @@ class Peer:
 
     def validate_block(self, block):
         """
-        Validates a block by checking previous block existence and transactions.
+        Validates a block by checking the existence of its previous block and verifying transactions.
         """
         if block.prev_block_id and block.prev_block_id not in self.blockchain:
             return False
@@ -306,7 +311,7 @@ class Peer:
             sender = txn.sender_id
             receiver = txn.receiver_id
             amount = txn.amount
-            if sender == "0":  # Coinbase
+            if sender == "0":  # Coinbase transaction
                 balances.setdefault(receiver, INITIAL_BALANCE)
                 balances[receiver] += amount
             else:
@@ -321,7 +326,7 @@ class Peer:
 
     def construct_chain(self, block):
         """
-        Constructs the chain leading to a given block.
+        Constructs the chain leading up to the given block.
         """
         chain = []
         current_block = block
@@ -334,7 +339,7 @@ class Peer:
 
     def construct_chain_by_id(self, block_id):
         """
-        Constructs the chain up to a given block ID.
+        Constructs the chain up to the block with the given ID.
         """
         chain = []
         current_block = self.blockchain.get(block_id, None)
@@ -346,7 +351,7 @@ class Peer:
 
     def update_blockchain(self, new_block):
         """
-        Updates the local blockchain with a new block.
+        Updates the local blockchain using the new block.
         """
         chain = self.construct_chain(new_block)
         self.current_longest_chain = copy.deepcopy(chain)

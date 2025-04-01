@@ -16,7 +16,7 @@ if __name__ == '__main__':
     for peer_id in range(NUM_PEERS):
         visual.visualize_blockchain(str(peer_id))
     visual.visualize_network_topology()
-
+    visual.visualize_overlay_network(sim.network)
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"Simulation completed in {elapsed_time:.2f} seconds.")

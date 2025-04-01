@@ -21,14 +21,20 @@ class Simulation:
 
     def setup(self):
         """
-        Sets up simulation: creates peers, assigns hash power, network, and genesis block.
+        Sets up simulation:
+          - Creates peers and assigns parameters (hash power, malicious flag, etc.).
+          - Selects one malicious node as the ringmaster.
+          - Initializes the network (including overlay among malicious nodes).
+          - Creates and assigns the genesis block.
         """
+        # Remove previous simulation output directory if exists.
         if os.path.exists(self.parent_dir):
             shutil.rmtree(self.parent_dir)
         os.makedirs(self.parent_dir, exist_ok=True)
         self.log_file = open(self.log_file_path, 'w')
         self.log_file.write("Simulation setup started.\n")
 
+        # Create peers
         peer_ids = [str(i) for i in range(NUM_PEERS)]
         num_malicious = int(PERCENT_MALICIOUS * NUM_PEERS)
         malicious_peers = set(random.sample(peer_ids, num_malicious))
@@ -41,19 +47,29 @@ class Simulation:
             self.peers[pid] = peer
 
         honest_count = NUM_PEERS - num_malicious
-        attacker_factor = 3.0  # malicious nodes have 3x mining power compared to honest ones
-        total_weight = honest_count * 1 + num_malicious * attacker_factor
+        # ATTACKER_FACTOR is defined in config.py; it represents the multiplier for malicious nodes' hash power.
+        total_weight = honest_count * 1 + num_malicious * ATTACKER_FACTOR
         for peer in self.peers.values():
             if peer.is_malicious:
-                peer.hash_power = attacker_factor / total_weight
+                peer.hash_power = ATTACKER_FACTOR / total_weight
             else:
                 peer.hash_power = 1 / total_weight
 
         self.log_file.write(f"Honest nodes (slow & low CPU): {honest_count}\n")
         self.log_file.write(f"Malicious nodes (fast & high CPU): {num_malicious}\n")
 
+        # Choose one malicious node at random as the ringmaster.
+        if num_malicious > 0:
+            ringmaster_id = random.choice(list(malicious_peers))
+            self.peers[ringmaster_id].ringmaster = True
+            self.log_file.write(f"Ringmaster (malicious) selected: Peer {ringmaster_id}\n")
+        else:
+            self.log_file.write("No malicious nodes present; no ringmaster selected.\n")
+
+        # Initialize network (this will include the malicious overlay per network.py)
         self.network = Network(self.peers)
 
+        # Create genesis block and assign to all peers.
         genesis_block = Block(miner_id='Satoshi', prev_block_id=None, transactions=[], timestamp=0)
         for peer in self.peers.values():
             peer.blockchain[genesis_block.block_id] = genesis_block
@@ -65,6 +81,7 @@ class Simulation:
         Runs the simulation event loop.
         """
         self.log_file.write("Simulation started.\n")
+        # Schedule initial transaction generation and mining for each peer.
         for peer in self.peers.values():
             interarrival_time = random.expovariate(1 / MEAN_TX_INTERVAL)
             event_time = self.current_time + interarrival_time
@@ -74,14 +91,15 @@ class Simulation:
             peer.schedule_block_mined(self.current_time, self.event_queue, self.network)
 
         last_log_time = 0
+        # Main simulation loop.
         while self.event_queue:
             event = heapq.heappop(self.event_queue)
             if event.time > SIMULATION_TIME:
                 break
             self.current_time = event.time
             peer = self.peers[event.peer_id]
+            # Add random jitter.
             self.current_time += np.random.uniform(0, 0.1)
-            print(f"Processing event: {event.event_type.name} for Peer {peer.peer_id} at time {self.current_time:.2f}")
 
             if event.event_type == EventType.GENERATE_TRANSACTION:
                 peer.generate_transaction(self.current_time, self.event_queue, self.network)
@@ -119,3 +137,8 @@ class Simulation:
         self.log_file.write("Simulation ended.\n")
         if self.log_file:
             self.log_file.close()
+
+if __name__ == "__main__":
+    sim = Simulation()
+    sim.setup()
+    sim.run()
