@@ -19,15 +19,89 @@ class Simulation:
         self.log_file = None
         self.log_interval = 50     # seconds
 
+    # def setup(self):
+    #     """
+    #     Sets up simulation:
+    #       - Creates peers and assigns parameters (hash power, malicious flag, etc.).
+    #       - Selects one malicious node as the ringmaster.
+    #       - Initializes the network (including overlay among malicious nodes).
+    #       - Creates and assigns the genesis block.
+    #     """
+    #     # Remove previous simulation output directory if exists.
+    #     if os.path.exists(self.parent_dir):
+    #         shutil.rmtree(self.parent_dir)
+    #     os.makedirs(self.parent_dir, exist_ok=True)
+    #     self.log_file = open(self.log_file_path, 'w')
+    #     self.log_file.write("Simulation setup started.\n")
+
+    #     # Create peers
+    #     peer_ids = [str(i) for i in range(NUM_PEERS)]
+    #     num_malicious = int(PERCENT_MALICIOUS * NUM_PEERS)
+    #     malicious_peers = set(random.sample(peer_ids, num_malicious))
+    #     for pid in peer_ids:
+    #         # Honest nodes: slow & low CPU; malicious nodes: fast & high CPU.
+    #         is_malicious = pid in malicious_peers
+    #         is_slow = not is_malicious
+    #         is_low_cpu = not is_malicious
+    #         peer = Peer(pid, is_slow, is_low_cpu, is_malicious=is_malicious)
+    #         self.peers[pid] = peer
+
+    #     honest_count = NUM_PEERS - num_malicious
+    #     # ATTACKER_FACTOR is defined in config.py; it represents the multiplier for malicious nodes' hash power.
+    #     # total_weight = honest_count * 1 + num_malicious * ATTACKER_FACTOR
+    #     # for peer in self.peers.values():
+    #     #     if peer.is_malicious:
+    #     #         peer.hash_power = ATTACKER_FACTOR / total_weight
+    #     #     else:
+    #     #         peer.hash_power = 1 / total_weight
+    #     # Select a random malicious node as the ringmaster
+    #     malicious_nodes = [peer for peer in self.peers.values() if peer.is_malicious]
+    #     if malicious_nodes:
+    #         ringmaster = random.choice(malicious_nodes)  # Pick one malicious node as the leader
+
+    #         total_weight = honest_count * 1 + num_malicious * ATTACKER_FACTOR
+
+    #         for peer in self.peers.values():
+    #             if peer.is_malicious:
+    #                 if peer == ringmaster:
+    #                     # Give the ringmaster all the malicious hash power
+    #                     peer.hash_power = (num_malicious * ATTACKER_FACTOR) / total_weight
+    #                 else:
+    #                     # Other malicious nodes get 0 power (they don't mine)
+    #                     peer.hash_power = 0
+    #             else:
+    #                 peer.hash_power = 1 / total_weight
+
+
+    #     self.log_file.write(f"Honest nodes (slow & low CPU): {honest_count}\n")
+    #     self.log_file.write(f"Malicious nodes (fast & high CPU): {num_malicious}\n")
+
+    #     # Choose one malicious node at random as the ringmaster.
+    #     if num_malicious > 0:
+    #         ringmaster_id = random.choice(list(malicious_peers))
+    #         self.peers[ringmaster_id].ringmaster = True
+    #         self.log_file.write(f"Ringmaster (malicious) selected: Peer {ringmaster_id}\n")
+    #     else:
+    #         self.log_file.write("No malicious nodes present; no ringmaster selected.\n")
+
+    #     # Initialize network (this will include the malicious overlay per network.py)
+    #     self.network = Network(self.peers)
+
+    #     # Create genesis block and assign to all peers.
+    #     genesis_block = Block(miner_id='Satoshi', prev_block_id=None, transactions=[], timestamp=0)
+    #     for peer in self.peers.values():
+    #         peer.blockchain[genesis_block.block_id] = genesis_block
+    #         peer.current_longest_chain.append(genesis_block)
+    #     self.log_file.write("Simulation setup ended.\n\n")
     def setup(self):
         """
-        Sets up simulation:
+        Sets up the simulation:
           - Creates peers and assigns parameters (hash power, malicious flag, etc.).
           - Selects one malicious node as the ringmaster.
           - Initializes the network (including overlay among malicious nodes).
           - Creates and assigns the genesis block.
         """
-        # Remove previous simulation output directory if exists.
+        # Remove previous simulation output directory if it exists
         if os.path.exists(self.parent_dir):
             shutil.rmtree(self.parent_dir)
         os.makedirs(self.parent_dir, exist_ok=True)
@@ -38,8 +112,8 @@ class Simulation:
         peer_ids = [str(i) for i in range(NUM_PEERS)]
         num_malicious = int(PERCENT_MALICIOUS * NUM_PEERS)
         malicious_peers = set(random.sample(peer_ids, num_malicious))
+
         for pid in peer_ids:
-            # Honest nodes: slow & low CPU; malicious nodes: fast & high CPU.
             is_malicious = pid in malicious_peers
             is_slow = not is_malicious
             is_low_cpu = not is_malicious
@@ -47,33 +121,45 @@ class Simulation:
             self.peers[pid] = peer
 
         honest_count = NUM_PEERS - num_malicious
-        # ATTACKER_FACTOR is defined in config.py; it represents the multiplier for malicious nodes' hash power.
-        total_weight = honest_count * 1 + num_malicious * ATTACKER_FACTOR
+
+        # Select a random malicious node as the ringmaster
+        malicious_nodes = [peer for peer in self.peers.values() if peer.is_malicious]
+        ringmaster = random.choice(malicious_nodes) if malicious_nodes else None
+
+        # Ensure total_weight is never zero to prevent division errors
+        total_weight = honest_count + num_malicious
+        if total_weight == 0:
+            raise ValueError("Total hash weight is zero. Adjust parameters to avoid this.")
+
+        # Assign hash power: honest nodes get their fair share, ringmaster gets all malicious power
         for peer in self.peers.values():
             if peer.is_malicious:
-                peer.hash_power = ATTACKER_FACTOR / total_weight
+                if peer == ringmaster:
+                    peer.hash_power = (num_malicious ) / total_weight
+                else:
+                    peer.hash_power = 0  # Other malicious nodes do not mine
             else:
-                peer.hash_power = 1 / total_weight
+                peer.hash_power = 1 / total_weight  # Honest nodes get their fair share
 
         self.log_file.write(f"Honest nodes (slow & low CPU): {honest_count}\n")
         self.log_file.write(f"Malicious nodes (fast & high CPU): {num_malicious}\n")
 
-        # Choose one malicious node at random as the ringmaster.
-        if num_malicious > 0:
-            ringmaster_id = random.choice(list(malicious_peers))
-            self.peers[ringmaster_id].ringmaster = True
-            self.log_file.write(f"Ringmaster (malicious) selected: Peer {ringmaster_id}\n")
+        # Log ringmaster selection
+        if ringmaster:
+            ringmaster.ringmaster = True
+            self.log_file.write(f"Ringmaster (malicious) selected: Peer {ringmaster.peer_id}\n")
         else:
             self.log_file.write("No malicious nodes present; no ringmaster selected.\n")
 
         # Initialize network (this will include the malicious overlay per network.py)
         self.network = Network(self.peers)
 
-        # Create genesis block and assign to all peers.
+        # Create genesis block and assign to all peers
         genesis_block = Block(miner_id='Satoshi', prev_block_id=None, transactions=[], timestamp=0)
         for peer in self.peers.values():
             peer.blockchain[genesis_block.block_id] = genesis_block
             peer.current_longest_chain.append(genesis_block)
+
         self.log_file.write("Simulation setup ended.\n\n")
 
     def run(self):

@@ -110,6 +110,8 @@ class Peer:
         Schedules a block mining event.
         """
         total_hash_power = sum(peer.hash_power for peer in network.peers.values())
+        if self.hash_power == 0 or total_hash_power == 0:
+            return 
         mean_time = MEAN_BLOCK_INTERVAL / (self.hash_power / total_hash_power)
         mining_time = random.expovariate(1 / mean_time)
         event_time = current_time + mining_time
