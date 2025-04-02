@@ -188,6 +188,12 @@ class Visualizer:
             ratio2 = f"{ratio2:.5f}"
             data.append([peer_id, longest_chain_length, malicious_blocks_in_lc, total_blocks_by_malicious, ratio1, ratio2])
         df = pd.DataFrame(data, columns=['Peer ID', 'LC Length', 'Malicious Blocks in LC', 'Total Blocks by Malicious', 'Ratio (Malicious Blocks/LC Length)', 'Ratio (Malicious Blocks/Total Blocks by Malicious Nodes)'])
+
+        # Find the row index (in the DataFrame) for the ringmaster.
+        ringmaster_index = df.index[df['Peer ID'] == ringmaster_id].tolist()[0] if ringmaster_id is not None else None
+        # Table row index: header is row 0, then DataFrame row i appears at table row i+1.
+        highlight_row = ringmaster_index + 1 if ringmaster_index is not None else None
+
         fig, ax = plt.subplots(figsize=(12, 8))
         ax.axis('tight')
         ax.axis('off')
@@ -199,6 +205,10 @@ class Visualizer:
         for (i, j), cell in table.get_celld().items():
             if i == 0:
                 cell.set_facecolor('yellow')
+                cell.set_text_props(weight='bold', color='black')
+            elif highlight_row is not None and i == highlight_row:
+                # Highlight entire row of ringmaster.
+                cell.set_facecolor('lightgreen')
                 cell.set_text_props(weight='bold', color='black')
             elif i % 2 == 0:
                 cell.set_facecolor('#f2f2f2')
