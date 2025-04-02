@@ -5,7 +5,7 @@ import numpy as np
 
 # Sample data (replace these with your actual simulation results)
 # X-axis: Percentage of malicious nodes in the network
-malicious_percentages = [5, 10, 15, 20, 25]
+malicious_percentages = [5, 10, 15, 20, 40]
 # Y-axis: Ratio = (Number of malicious blocks in longest chain at ringmaster) / (Total blocks in longest chain at ringmaster)
 ratio_malicious_in_longest = [0.30, 0.40, 0.50, 0.55, 0.60]
 

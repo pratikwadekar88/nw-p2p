@@ -1,43 +1,47 @@
-
 import matplotlib.pyplot as plt
 import numpy as np
 
 # Sample data (replace these with your actual simulation results)
-# X-axis: Percentage of malicious nodes in the network
-malicious_percentages = [5, 10, 15, 20, 25]
-# Y-axis: Ratio = (Number of malicious blocks in longest chain at ringmaster) / (Total blocks in longest chain at ringmaster)
-ratio_malicious_in_longest = [0.30, 0.40, 0.50, 0.55, 0.60]
+malicious_percentages = [5, 10, 15, 20, 40, 50]
+ratio_selfish_eclipse = [0.25, 0.35, 0.45, 0.55, 0.60]  # Selfish Mining + Eclipse Attack
+ratio_selfish_only   = [0.20, 0.30, 0.40, 0.50, 0.55]  # Selfish Mining Alone
 
 n_groups = len(malicious_percentages)
 index = np.arange(n_groups)
-bar_width = 0.6  # Using a single bar per group
+bar_width = 0.35
 
-# Create the figure and axis
+# Create the plot
 fig, ax = plt.subplots(figsize=(10, 6))
 
-# Draw bars using a light pastel green color
-bars = ax.bar(index, ratio_malicious_in_longest, bar_width,
-              color='#ccffcc', edgecolor='white', linewidth=1.5,
-              label='Malicious Ratio')
+# Use pastel colors for the bars with white edges
+bars1 = ax.bar(index, ratio_selfish_eclipse, bar_width,
+               label='Selfish Mining + Eclipse Attack',
+               color='#ff9999', edgecolor='white', linewidth=1.5)
 
-# Set axis labels and title with appropriate font sizes
+bars2 = ax.bar(index + bar_width, ratio_selfish_only, bar_width,
+               label='Selfish Mining Alone',
+               color='#99ccff', edgecolor='white', linewidth=1.5)
+
+# Set labels and title with increased font sizes for clarity
 ax.set_xlabel('Percentage of Malicious Nodes (%)', fontsize=12)
-ax.set_ylabel('Ratio (Malicious Blocks in LC / Total Blocks by malicious)', fontsize=12)
-ax.set_title('Ratio of Malicious Blocks in Longest Chain at Ringmaster', fontsize=14)
-ax.set_xticks(index)
+ax.set_ylabel('Ratio (Malicious Blocks in Main Chain / Total Malicious Blocks)', fontsize=12)
+ax.set_title('Comparative Analysis of Block Ratios for Different Attack Strategies\n(Timeout = X sec)', fontsize=14)
+ax.set_xticks(index + bar_width / 2)
 ax.set_xticklabels(malicious_percentages, fontsize=12)
+ax.legend(fontsize=12)
 
-# Optionally, add numeric labels on top of each bar.
+# Function to add value labels on top of the bars
 def autolabel(bars):
     for bar in bars:
         height = bar.get_height()
         ax.annotate(f'{height:.2f}',
-                    xy=(bar.get_x() + bar.get_width()/2, height),
-                    xytext=(0, 3),  # Vertical offset
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
                     textcoords="offset points",
                     ha='center', va='bottom', fontsize=10)
 
-autolabel(bars)
+autolabel(bars1)
+autolabel(bars2)
 
 plt.tight_layout()
 plt.show()
