@@ -17,19 +17,19 @@ if __name__ == '__main__':
 
     visual = Visualizer(sim.peers)
 
-    malicious_peers = {}
-    for peer_id, peer in sim.peers.items():
-        malicious_peers[peer_id] = peer
-
-    overlay_visual = OverlayVisualizer(malicious_peers)
+#    malicious_peers = {}
+#    for peer_id, peer in sim.peers.items():
+#        malicious_peers[peer_id] = peer
+#
+#    overlay_visual = OverlayVisualizer(malicious_peers)
 
     # Compare peer blockchains
     visual.compare_peer_blockchains()
 
     # Visualize the network topology
-    visual.visualize_network_topology()
-    overlay_visual.visualize_network_topology()
-
-    # Visualize the blockchain of all peers
-    for peer_id in range(NUM_PEERS):
-        visual.visualize_blockchain(str(peer_id))
+#    visual.visualize_network_topology()
+#    overlay_visual.visualize_network_topology()
+#
+#    # Visualize the blockchain of all peers
+#    for peer_id in range(NUM_PEERS):
+#        visual.visualize_blockchain(str(peer_id))

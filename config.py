@@ -1,9 +1,9 @@
 # Simulation parameters
 NUM_PEERS = 100                 # Total number of peers
-MALICIOUS_PERCENT = 0.2          # Percentage of Malicious nodes. Thee remaining nodes will be honest.
+MALICIOUS_PERCENT = 0.10          # Percentage of Malicious nodes. Thee remaining nodes will be honest.
 MEAN_TX_INTERVAL = 5           # Mean time between transactions (seconds)
 MEAN_BLOCK_INTERVAL = 20       # Mean block interval for mining (seconds)
-SIMULATION_TIME = 100         # Total simulation time (seconds)
+SIMULATION_TIME = 500         # Total simulation time (seconds)
 ECLIPSE_ENABLED = True
 
 # Network topology parameters
