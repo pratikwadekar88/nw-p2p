@@ -1,9 +1,9 @@
 # Simulation parameters
 NUM_PEERS = 100                 # Total number of peers
-MALICIOUS_PERCENT = 0.05          # Percentage of Malicious nodes. Thee remaining nodes will be honest.
+MALICIOUS_PERCENT = 0.2          # Percentage of Malicious nodes. Thee remaining nodes will be honest.
 MEAN_TX_INTERVAL = 5           # Mean time between transactions (seconds)
 MEAN_BLOCK_INTERVAL = 20       # Mean block interval for mining (seconds)
-SIMULATION_TIME = 500         # Total simulation time (seconds)
+SIMULATION_TIME = 100         # Total simulation time (seconds)
 ECLIPSE_ENABLED = True
 
 # Network topology parameters
@@ -31,4 +31,4 @@ HASH_SIZE = 64                 # 64 bytes for block hash
 COINBASE_AMOUNT = 50           # Mining reward
 INITIAL_BALANCE = 1000         # Starting balance for each peer
 
-TIMEOUT = 30                   # Timeout for message propagation (seconds)
+TIMEOUT =5                   # Timeout for message propagation (seconds)
