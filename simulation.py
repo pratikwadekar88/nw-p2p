@@ -32,6 +32,7 @@ class Simulation:
         self.log_file.write("Simulation setup started.\n")
 
         # Determine node properties.
+        PERCENT_SLOW = 1 -MALICIOUS_PERCENT
         num_slow = int(PERCENT_SLOW * NUM_PEERS) #  same as num of malicious
         num_fast = NUM_PEERS - num_slow
 
