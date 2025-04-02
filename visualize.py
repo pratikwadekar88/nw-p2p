@@ -175,12 +175,19 @@ class Visualizer:
         data = []
         for peer_id, peer in self.peers.items():
             longest_chain_length = len(peer.current_longest_chain)
-            numBlocksByPeerInLC = sum(1 for block in peer.current_longest_chain if block.miner_id == peer_id)
-            numBlocksByPeer = sum(1 for block in peer.blockchain.values() if block.miner_id == peer_id)
-            ratio = (numBlocksByPeerInLC / numBlocksByPeer) if numBlocksByPeer > 0 else 0
-            ratio_blocks_in_longest_chain = f"{ratio:.5f}"
-            data.append([peer_id, longest_chain_length, numBlocksByPeerInLC, numBlocksByPeer, ratio_blocks_in_longest_chain])
-        df = pd.DataFrame(data, columns=['Peer ID', 'LC Length', 'Blocks in LC by Peer', 'Total Blocks by Peer', 'Ratio (Blocks in LC/Total Blocks)'])
+            malicious_blocks_in_lc = sum(1 for block in peer.current_longest_chain if block.is_malicious)
+            ringmaster_id = None
+            for peer in self.peers.values():
+                if peer.is_ringmaster:
+                    ringmaster_id = peer.peer_id
+                    break
+            total_blocks_by_malicious = self.peers[ringmaster_id].blocks_mined
+            ratio1 = (malicious_blocks_in_lc / max(1, longest_chain_length))
+            ratio1 = f"{ratio1:.5f}"
+            ratio2 = (malicious_blocks_in_lc / max(1, total_blocks_by_malicious))
+            ratio2 = f"{ratio2:.5f}"
+            data.append([peer_id, longest_chain_length, malicious_blocks_in_lc, total_blocks_by_malicious, ratio1, ratio2])
+        df = pd.DataFrame(data, columns=['Peer ID', 'LC Length', 'Malicious Blocks in LC', 'Total Blocks by Malicious', 'Ratio (Malicious Blocks/LC Length)', 'Ratio (Malicious Blocks/Total Blocks by Malicious Nodes)'])
         fig, ax = plt.subplots(figsize=(12, 8))
         ax.axis('tight')
         ax.axis('off')

@@ -11,6 +11,10 @@ if __name__ == '__main__':
     sim.setup()
     sim.run(TIMEOUT)
 
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Simulation completed in {elapsed_time:.2f} seconds.")
+
     visual = Visualizer(sim.peers)
 
     malicious_peers = {}
@@ -21,10 +25,6 @@ if __name__ == '__main__':
 
     # Compare peer blockchains
     visual.compare_peer_blockchains()
-
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"Simulation completed in {elapsed_time:.2f} seconds.")
 
     # Visualize the network topology
     visual.visualize_network_topology()

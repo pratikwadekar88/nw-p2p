@@ -32,6 +32,7 @@ class Peer:
         self.private_connections = []           # list of peer IDs in private chain
         self.allowed_hash_requests = set() # when the ringmaster sends broadcast signal, malicious miners will actually stop eclipse attack for these blocks and actually return the block
         self.broadcast_count = 0;
+        self.blocks_mined = 0;
 
 
 
@@ -118,6 +119,7 @@ class Peer:
             transactions.insert(0, coinbase_txn)
             block_size += TRANSACTION_SIZE  # Add size of coinbase transaction
 
+            self.blocks_mined += 1;
             block = Block(miner_id=self.peer_id, prev_block_id=prev_block_id, transactions=transactions, timestamp=event_time)
             event = Event(time=event_time, event_type=EventType.BLOCK_MINED, peer_id=self.peer_id, block=block)
             event_queue.schedule_event(event)
