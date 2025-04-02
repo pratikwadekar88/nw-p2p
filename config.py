@@ -1,9 +1,9 @@
 # Simulation parameters
 NUM_PEERS = 50                 # Total number of peers
-PERCENT_SLOW = 0.90            # Percentage of slow (honest) nodes. Thee remaining nodes will be malicious.
+PERCENT_SLOW = 0.70            # Percentage of slow (honest) nodes. Thee remaining nodes will be malicious.
 MEAN_TX_INTERVAL = 5           # Mean time between transactions (seconds)
-MEAN_BLOCK_INTERVAL = 50       # Mean block interval for mining (seconds)
-SIMULATION_TIME = 3000         # Total simulation time (seconds)
+MEAN_BLOCK_INTERVAL = 20       # Mean block interval for mining (seconds)
+SIMULATION_TIME = 1000         # Total simulation time (seconds)
 ECLIPSE_ENABLED = False
 
 # Network topology parameters

@@ -118,7 +118,7 @@ class Peer:
             transactions.insert(0, coinbase_txn)
             block_size += TRANSACTION_SIZE  # Add size of coinbase transaction
 
-            block = Block(miner_id=self.peer_id, prev_block_id=prev_block_id, transactions=transactions, timestamp=current_time)
+            block = Block(miner_id=self.peer_id, prev_block_id=prev_block_id, transactions=transactions, timestamp=event_time)
             event = Event(time=event_time, event_type=EventType.BLOCK_MINED, peer_id=self.peer_id, block=block)
             event_queue.schedule_event(event)
 
@@ -430,6 +430,10 @@ class Peer:
                         # else if reiceved on overlay, broadcast this block hash only on oerlay
                     # else
                         # broadcast this block hash only on regular
+                    if candidate_chain_length > current_chain_length:
+                        self.update_blockchain(block)
+                        self.schedule_block_mined(current_time, event_queue) # start mining the new block from now
+
                     if self.is_malicious:
                         for neighbor_id in self.private_connections:
                                 if neighbor_id == from_peer:
@@ -625,7 +629,7 @@ class Peer:
             event_queue.schedule_event(event)
 
         for neighbor_id in self.connections:
-            for block in self.current_longest_chain:
+            for block in self.current_longest_chain[1:]:
                 block_hash = block.block_id  # Block ID used as hash.
                 delay = network.calculate_latency(self.peer_id, neighbor_id, type('Msg', (), {'size': HASH_SIZE})) # creates a new class named Msg, containing an attibute 'size'
                 event_time = current_time + delay
