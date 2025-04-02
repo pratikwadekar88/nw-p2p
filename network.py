@@ -1,170 +1,159 @@
-import random
 import heapq
-from config import *
+import random
 from collections import deque
-
-
+from config import *
+ 
 class Network:
-    """
-    Represents the network of peers.
-
-    Attributes:
-        peers (dict): Dictionary of peer_id -> Peer.
-        latencies (dict): Dictionary of (peerid_i, peerid_j) -> latency params.
-    """
-
     def __init__(self, peers):
-        """
-        Initializes the network with the given peers.
-
-        Args:
-            peers (dict): Dictionary of peer_id -> Peer.
-        """
         self.peers = peers  # Dict of peer_id -> Peer
         self.latencies = {}  # (peer_id_i, peer_id_j) -> latency parameters
-
         self.initialize_topology()
         self.initialize_latencies()
-
+        self.initialize_malicious_overlay()
+ 
     def initialize_topology(self):
-        """
-        Initializes the network topology by connecting peers.
-        """
         peer_ids = list(self.peers.keys())
         connected = False
         attempt = 0
-        max_attempts = 100  # Prevent potential infinite loops
-
+        max_attempts = 100
         while not connected and attempt < max_attempts:
             attempt += 1
-            # Reset connections
             for peer in self.peers.values():
                 peer.connections = []
-
-            # Start by creating a connected backbone
-            # Use a shuffled list to connect peers in a ring
-            # (guarantees connectivity)
             random.shuffle(peer_ids)
             for i in range(len(peer_ids)):
-                peer_a = peer_ids[i]
-                peer_b = peer_ids[(i + 1) % len(peer_ids)]
-                # Add mutual connections
-                if peer_b not in self.peers[peer_a].connections:
-                    self.peers[peer_a].connections.append(peer_b)
-                if peer_a not in self.peers[peer_b].connections:
-                    self.peers[peer_b].connections.append(peer_a)
-
-            # Now, ensure each peer has between
-            # MIN_CONNECTIONS and MAX_CONNECTIONS connections
-            # Remaining possible peers for each peer
+                a = peer_ids[i]
+                b = peer_ids[(i+1) % len(peer_ids)]
+                if b not in self.peers[a].connections:
+                    self.peers[a].connections.append(b)
+                if a not in self.peers[b].connections:
+                    self.peers[b].connections.append(a)
             for peer_id in peer_ids:
                 peer = self.peers[peer_id]
                 while len(peer.connections) < MIN_CONNECTIONS:
-                    possible_peers = [pid
-                                      for pid in peer_ids if pid != peer_id
-                                      and pid not in peer.connections]
-                    if not possible_peers:
-                        break  # No more peers to connect
-                    new_peer_id = random.choice(possible_peers)
-                    # Add mutual connections
-                    peer.connections.append(new_peer_id)
-                    self.peers[new_peer_id].connections.append(peer_id)
-                # Trim connections if exceeds MAX_CONNECTIONS
+                    possible = [pid for pid in peer_ids if pid != peer_id and pid not in peer.connections]
+                    if not possible:
+                        break
+                    new_pid = random.choice(possible)
+                    peer.connections.append(new_pid)
+                    self.peers[new_pid].connections.append(peer_id)
                 if len(peer.connections) > MAX_CONNECTIONS:
-                    # Remove extra connections randomly
-                    extra_connections = len(peer.connections) - MAX_CONNECTIONS
-                    for _ in range(extra_connections):
-                        removed_peer_id = random.choice(peer.connections)
-                        peer.connections.remove(removed_peer_id)
-                        self.peers[removed_peer_id].connections.remove(peer_id)
-
-            # After adjustments, check if graph is connected
+                    extra = len(peer.connections) - MAX_CONNECTIONS
+                    for _ in range(extra):
+                        removed = random.choice(peer.connections)
+                        peer.connections.remove(removed)
+                        self.peers[removed].connections.remove(peer_id)
             connected = self.is_connected()
-            # Final check: Ensure all peers have between MIN_CONNECTIONS and MAX_CONNECTIONS connections
             degrees_correct = all(MIN_CONNECTIONS <= len(peer.connections) <= MAX_CONNECTIONS for peer in self.peers.values())
             if not degrees_correct or not connected:
-                connected = False  # Restart the process
-
+                connected = False
         if not connected:
-            raise Exception("Failed to create a connected network with the desired degree constraints after multiple attempts.")
-
+            raise Exception("Failed to create a connected network with desired degree constraints.")
+ 
     def is_connected(self):
-        """
-        Checks if the network is connected.
-
-        Returns:
-            bool: True if the network is connected, False otherwise.
-        """
         visited = set()
         to_visit = deque()
         start_peer = next(iter(self.peers))
         to_visit.append(start_peer)
         while to_visit:
-            peer_id = to_visit.popleft()
-            if peer_id not in visited:
-                visited.add(peer_id)
-                to_visit.extend(self.peers[peer_id].connections)
+            pid = to_visit.popleft()
+            if pid not in visited:
+                visited.add(pid)
+                to_visit.extend(self.peers[pid].connections)
         return len(visited) == len(self.peers)
-
+ 
     def initialize_latencies(self):
-        """
-        Initializes the latencies between connected peers.
-        """
         for peer_i in self.peers.values():
             for peer_j_id in peer_i.connections:
                 key = (peer_i.peer_id, peer_j_id)
-                # ρij: Propagation delay
-                prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
-                # c_ij: Link speed
                 peer_j = self.peers[peer_j_id]
-                if peer_i.is_slow or peer_j.is_slow:
-                    link_speed = SLOW_LINK_SPEED
-                else:
+                if peer_i.is_malicious and peer_j.is_malicious:
+                    prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
                     link_speed = FAST_LINK_SPEED
-                # Store latency parameters
-                self.latencies[key] = {
-                    'prop_delay': prop_delay,
-                    'link_speed': link_speed
-                }
-
+                else:
+                    prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
+                    if peer_i.is_slow or peer_j.is_slow:
+                        link_speed = SLOW_LINK_SPEED
+                    else:
+                        link_speed = FAST_LINK_SPEED
+                self.latencies[key] = {'prop_delay': prop_delay, 'link_speed': link_speed}
+ 
+    def initialize_malicious_overlay(self):
+        # Build overlay network only for malicious nodes.
+        malicious_ids = [peer.peer_id for peer in self.peers.values() if peer.is_malicious]
+        MIN_OVERLAY = 3
+        MAX_OVERLAY = 6
+        for peer_id in malicious_ids:
+            self.peers[peer_id].overlay_connections = []
+        connected = False
+        attempt = 0
+        max_attempts = 100
+        while not connected and attempt < max_attempts:
+            attempt += 1
+            for peer_id in malicious_ids:
+                self.peers[peer_id].overlay_connections = []
+            random.shuffle(malicious_ids)
+            # Create a backbone ring among malicious nodes.
+            for i in range(len(malicious_ids)):
+                a = malicious_ids[i]
+                b = malicious_ids[(i+1) % len(malicious_ids)]
+                if b not in self.peers[a].overlay_connections:
+                    self.peers[a].overlay_connections.append(b)
+                if a not in self.peers[b].overlay_connections:
+                    self.peers[b].overlay_connections.append(a)
+            # Add extra overlay connections until each malicious node has at least MIN_OVERLAY.
+            for peer_id in malicious_ids:
+                peer = self.peers[peer_id]
+                while len(peer.overlay_connections) < MIN_OVERLAY:
+                    possible = [pid for pid in malicious_ids if pid != peer_id and pid not in peer.overlay_connections]
+                    if not possible:
+                        break
+                    new_pid = random.choice(possible)
+                    peer.overlay_connections.append(new_pid)
+                    if peer_id not in self.peers[new_pid].overlay_connections:
+                        self.peers[new_pid].overlay_connections.append(peer_id)
+                if len(peer.overlay_connections) > MAX_OVERLAY:
+                    extra = len(peer.overlay_connections) - MAX_OVERLAY
+                    for _ in range(extra):
+                        removed = random.choice(peer.overlay_connections)
+                        peer.overlay_connections.remove(removed)
+                        self.peers[removed].overlay_connections.remove(peer_id)
+            connected = all(MIN_OVERLAY <= len(self.peers[pid].overlay_connections) <= MAX_OVERLAY for pid in malicious_ids)
+        if not connected:
+            raise Exception("Failed to create a malicious overlay network with desired degree constraints.")
+ 
     def calculate_latency(self, from_peer_id, to_peer_id, message):
-        """
-        Calculates the latency between two peers for a given message.
-
-        Args:
-            from_peer_id (int): The ID of the sending peer.
-            to_peer_id (int): The ID of the receiving peer.
-            message (Message): The message being sent.
-
-        Returns:
-            float: The calculated latency.
-        """
         key = (from_peer_id, to_peer_id)
-        params = self.latencies.get(key)
-        if not params:
-            # Should not happen, but handle it
-            prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
-            link_speed = FAST_LINK_SPEED
+        from_peer = self.peers[from_peer_id]
+        to_peer = self.peers[to_peer_id]
+        # If both are malicious and overlay-connected, use fast overlay latency.
+        if from_peer.is_malicious and to_peer.is_malicious:
+            if hasattr(from_peer, 'overlay_connections') and to_peer_id in from_peer.overlay_connections:
+                prop_delay = random.uniform(0.001, 0.01)  # 1-10ms overlay delay.
+                link_speed = FAST_LINK_SPEED
+            else:
+                params = self.latencies.get(key)
+                if not params:
+                    prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
+                    link_speed = FAST_LINK_SPEED
+                else:
+                    prop_delay = params['prop_delay']
+                    link_speed = params['link_speed']
         else:
-            prop_delay = params['prop_delay']
-            link_speed = params['link_speed']
-        # Message size in bits
+            params = self.latencies.get(key)
+            if not params:
+                prop_delay = random.uniform(MIN_PROP_DELAY, MAX_PROP_DELAY)
+                link_speed = FAST_LINK_SPEED
+            else:
+                prop_delay = params['prop_delay']
+                link_speed = params['link_speed']
         if hasattr(message, 'size'):
-            msg_size = message.size * 8  # Bytes to bits
+            msg_size = message.size * 8
         else:
             msg_size = 0
-        # dij: Queuing delay
         mean_dij = (96 * 1024) / link_speed
         queuing_delay = random.expovariate(1 / mean_dij)
-        latency = prop_delay + (msg_size / link_speed) + queuing_delay
-        return latency
-
+        return prop_delay + (msg_size / link_speed) + queuing_delay
+ 
     def schedule_event(self, event_queue, event):
-        """
-        Schedules an event in the event queue.
-
-        Args:
-            event_queue (list): The event queue.
-            event (Event): The event to be scheduled.
-        """
         heapq.heappush(event_queue, event)
