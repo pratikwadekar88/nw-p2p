@@ -149,15 +149,13 @@ class Visualizer:
     def visualize_network_topology(self):
         G = nx.Graph()
         for peer_id, peer in self.peers.items():
-            G.add_node(peer_id, is_slow=peer.is_slow, is_low_cpu=peer.is_low_cpu)
+            G.add_node(peer_id, is_slow=peer.is_slow)
         for peer_id, peer in self.peers.items():
             for neighbor_id in peer.private_connections:
                 G.add_edge(peer_id, neighbor_id)
         node_colors = [
-            'red' if data['is_slow'] and data['is_low_cpu'] 
-            else 'orange' if data['is_slow'] 
-            else 'green' if data['is_low_cpu'] 
-            else 'blue'
+            'red' if data['is_slow']
+            else 'green'
             for _, data in G.nodes(data=True)
         ]
         plt.figure(figsize=(12, 8))

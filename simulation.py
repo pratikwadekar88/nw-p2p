@@ -34,18 +34,14 @@ class Simulation:
         # Determine node properties.
         num_slow = int(PERCENT_SLOW * NUM_PEERS) #  same as num of malicious
         num_fast = NUM_PEERS - num_slow
-        num_low_cpu = int(PERCENT_LOW_CPU * NUM_PEERS)
-        num_high_cpu = NUM_PEERS - num_low_cpu
 
         peer_ids = [str(i) for i in range(NUM_PEERS)]
         slow_peers = set(random.sample(peer_ids, num_slow)) # honest peers
-        low_cpu_peers = set(random.sample(peer_ids, num_low_cpu))
         malicious_peers_set = set()
 
         for pid in peer_ids:
             is_slow = pid in slow_peers
-            is_low_cpu = pid in low_cpu_peers
-            peer = Peer(pid, is_slow, is_low_cpu)
+            peer = Peer(pid, is_slow)
             if not is_slow:
                 peer.is_malicious = True
                 malicious_peers_set.add(peer.peer_id)
@@ -57,42 +53,20 @@ class Simulation:
         self.log_file.write(f"Malicious ringmaster: Peer {ringmaster_id}\n")
 
         # Log counts.
-        num_red = sum(1 for peer in self.peers.values() if peer.is_slow and peer.is_low_cpu)
-        num_orange = sum(1 for peer in self.peers.values() if peer.is_slow and not peer.is_low_cpu)
-        num_green = sum(1 for peer in self.peers.values() if not peer.is_slow and peer.is_low_cpu)
-        num_blue = sum(1 for peer in self.peers.values() if not peer.is_slow and not peer.is_low_cpu)
+        num_red = sum(1 for peer in self.peers.values() if peer.is_slow)
+        num_green = sum(1 for peer in self.peers.values() if not peer.is_slow)
         self.log_file.write(f"Red nodes (slow & low CPU): {num_red}\n")
-        self.log_file.write(f"Orange nodes (slow only): {num_orange}\n")
-        self.log_file.write(f"Green nodes (low CPU only): {num_green}\n")
-        self.log_file.write(f"Blue nodes (fast & high CPU): {num_blue}\n")
+        self.log_file.write(f"Blue nodes (fast & high CPU): {num_green}\n")
         self.log_file.write(f"Malicious nodes: {len(malicious_peers_set)}\n")
 
         # Compute hash power.
-        total_peers = len(self.peers)
-        total_hash_power = (10 * num_fast + num_slow)
-        low_cpu_power = 1 / total_hash_power
-        high_cpu_power = 10 / total_hash_power
-        malicious_power = 0
+        base_power = 1.0
         for peer in self.peers.values():
-            if peer.is_low_cpu:
-                if not peer.is_malicious:
-                    peer.hash_power = low_cpu_power
-                else:
-                    peer.hash_power = 0
-                    malicious_power += low_cpu_power
-            else:
-                if not peer.is_malicious:
-                    peer.hash_power = high_cpu_power
-                else:
-                    peer.hash_power = 0
-                    malicious_power += low_cpu_power
-
-        # give all malicious power to ringmaster
-        self.peers[ringmaster_id].hash_power = malicious_power
-
-        # for converting each hash power
-        # for peer in self.peers.values():
-        #     peer.hash_power /= total_hash_power
+            peer.hash_power = base_power/NUM_PEERS
+            if peer.is_malicious:
+                peer.hash_power = 0
+                if peer.is_ringmaster:
+                    peer.hash_power = (base_power * num_fast)/NUM_PEERS
 
         # Create networks
         self.network = Network(self.peers)
@@ -186,12 +160,7 @@ class Simulation:
 
             elif event.event_type == EventType.TIMEOUT_EVENT:
                 blk_hash = event.kwargs['hash']
-                from_peer = event.kwargs['from_peer']
-                on_overlay = event.kwargs['overlay']
-                if on_overlay:
-                    peer.handle_timeout(self.current_time, self.event_queue, self.overlay_network, blk_hash, from_peer, on_overlay, Tt)
-                else:
-                    peer.handle_timeout(self.current_time, self.event_queue, self.network, blk_hash, from_peer, on_overlay, Tt)
+                peer.handle_timeout(self.current_time, self.event_queue, blk_hash, Tt)
 
 
             elif event.event_type == EventType.BROADCAST_PRIVATE_CHAIN: # this event always happens on overlay

@@ -10,10 +10,9 @@ from event import EventType, Event
 from config import *
 
 class Peer:
-    def __init__(self, peer_id, is_slow, is_low_cpu):
+    def __init__(self, peer_id, is_slow):
         self.peer_id = peer_id
         self.is_slow = is_slow
-        self.is_low_cpu = is_low_cpu
         self.connections = []             # list of peer IDs in honest chain
         self.pending_transactions = {}    # txn_id -> Transaction
         self.received_transactions = set()
@@ -227,13 +226,15 @@ class Peer:
             self.pending_hash_requests[block_hash] = {
                 'timer': current_time + Tt,
                 'requested_from': [from_peer],
-                'network': [network]
+                'network': [network],
+                'on_overlay': [on_overlay]
             }
             self.send_get_request(current_time, event_queue, network, block_hash, from_peer, on_overlay, Tt)
         else: # already have hash, waiting for actual block
             if from_peer not in self.pending_hash_requests[block_hash]['requested_from']:
                 self.pending_hash_requests[block_hash]['requested_from'].append(from_peer)
                 self.pending_hash_requests[block_hash]['network'].append(network)
+                self.pending_hash_requests[block_hash]['on_overlay'].append(on_overlay)
 
 
     def send_get_request(self, current_time, event_queue, network, block_hash, target_peer, on_overlay, Tt):
@@ -267,10 +268,12 @@ class Peer:
         # if get request received on regular network, withhold the block
         # unless the allowed_hash_requests set allowes that request
         # if it does, it means that the ringmaster had issued a broadcast, so then return that block
-        if self.is_malicious and not on_overlay:
+        if ECLIPSE_ENABLED and self.is_malicious and not on_overlay:
             if (block_hash, from_peer) not in self.allowed_hash_requests:
                 return
-        
+            else:
+                self.allowed_hash_requests.remove((block_hash, from_peer))
+
         # otherwise send the block if request was received on overlay network if you received request from overlay network
         if self.is_malicious and on_overlay:
             print(f"Malicious Peer {self.peer_id} sending block {block.block_id[:6]} on overlay network at time {current_time:.2f}")
@@ -365,6 +368,8 @@ class Peer:
             # Validate block
             if self.validate_block(block):
                 self.blockchain[block.block_id] = block
+                if block_hash in self.known_hashes:
+                    return
                 self.known_hashes[block_hash] = block
 
                 # Remove transactions included in the block from pending_transactions
@@ -417,8 +422,7 @@ class Peer:
 
                     elif candidate_chain_length == current_chain_length or candidate_chain_length == current_chain_length - 1:
                         # For these blocks, malicious miners will reply to the get requests sent by the honest chain
-                        self.broadcast_count += 1
-                        self.broadcast_private_chain(current_time, event_queue, self.peer_id, network, overlay_network, self.broadcast_count);
+                        self.broadcast_private_chain(current_time, event_queue, self.peer_id, network, overlay_network, self.broadcast_count+1);
 
                 else:
                     # if malicious, 
@@ -466,7 +470,7 @@ class Peer:
 
 
 
-    def handle_timeout(self, current_time, event_queue, network, block_hash, from_peer, on_overlay, Tt):
+    def handle_timeout(self, current_time, event_queue, block_hash, Tt):
         """
         If timeout expires and the full block has not been received, resend GET request.
         """
@@ -480,8 +484,10 @@ class Peer:
                 if len(pending['requested_from']) > 1:
                     pending['requested_from'] = pending['requested_from'][1:]
                     pending['network'] = pending['network'][1:]
+                    pending['on_overlay'] = pending['on_overlay'][1:]
                 target_peer = pending['requested_from'][0]
                 network = pending['network'][0]
+                on_overlay = pending['on_overlay'][0]
                 self.send_get_request(current_time, event_queue, network, block_hash, target_peer, on_overlay, Tt)
                 pending['timer'] = current_time + Tt
 
@@ -603,8 +609,10 @@ class Peer:
 
         if (self.broadcast_count >= broadcast_count):
             return # already broadcasted
-        
         self.broadcast_count += 1
+        # print the brodcast_count
+        print(f"Broadcast count:                                                                 {self.broadcast_count}")
+
         for neighbor_id in self.private_connections:
             if neighbor_id == from_peer:
                 continue;
